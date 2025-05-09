@@ -1,0 +1,43 @@
+/.phpunit.cache
+/node_modules
+/public/build
+/public/hot
+/public/storage
+/public/vendor
+/public/static
+/public/img
+/storage/*.key
+/vendor
+.env
+.env.backup
+.env.production
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+auth.json
+npm-debug.log
+yarn-error.log
+.DS_Store
+/.fleet
+/.vscode/settings.json
+!.gitkeep
+
+###> squizlabs/php_codesniffer ###
+/.phpcs-cache
+/phpcs.xml
+###< squizlabs/php_codesniffer ###
+
+###> phpunit/phpunit ###
+/phpunit.xml
+.phpunit.result.cache
+.phpunit.cache
+.ci/test-reports/
+###< phpunit/phpunit ###
+
+###> PHPStorm ###
+/.idea/
+###< PHPStorm ###
+
+###> phpstan/phpstan ###
+phpstan.neon
+###< phpstan/phpstan ###

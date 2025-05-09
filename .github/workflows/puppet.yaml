@@ -1,0 +1,116 @@
+name: Validate & Deploy Puppet
+
+on:
+  workflow_call:
+    inputs:
+      environment_target:
+        required: false
+        type: string
+        default: "/opt/docker/puppetserver/puppet/code/environments"
+
+    secrets:
+      deploy_ssh_key:
+        required: true
+
+env:
+  SSH_HOST: andromeda.finetic.dev
+  SSH_USER: puppetserver
+  SSH_OPTS: -o StrictHostKeyChecking=accept-new
+
+jobs:
+  validate-syntax:
+    name: 🧪 Validate Puppet Syntax
+    runs-on: [self-hosted, finetic]
+
+    steps:
+      - name: 🧾 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🔍 Puppet Syntax Check (excl. plans/)
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/mnt -w /mnt puppet/puppet-dev-tools:4.35.0 \
+          bash -c "
+            echo '🔍 Validating Puppet syntax in manifests/ and modules/... (excl. plans/)'
+            find manifests modules -type f -name '*.pp' ! -path '*/plans/*' -exec puppet parser validate {} \;
+          "
+
+  validate-lint:
+    name: 🧹 Puppet Lint Style
+    runs-on: [self-hosted, finetic]
+
+    steps:
+      - name: 🧾 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🔍 Run puppet-lint
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/mnt -w /mnt puppet/puppet-dev-tools:4.35.0 \
+          bash -c "
+            echo '🔍 Linting manifests/...'
+            puppet-lint manifests/
+
+            echo '🔍 Linting modules/...'
+            puppet-lint modules/
+          "
+
+  validate-yaml:
+    name: 🧾 YAML Lint
+    runs-on: [self-hosted, finetic]
+
+    steps:
+      - name: 🧾 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🔍 Run yamllint
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/mnt -w /mnt puppet/puppet-dev-tools:4.35.0 \
+          bash -c "
+            echo '🔍 Validating all YAML/YML files'
+            find manifests modules -type f \( -name '*.yaml' -o -name '*.yml' \) -print0 | xargs -0 yamllint
+          "
+
+  deploy-manifests:
+    name: 🚀 Deploy Puppet Manifests
+    needs: [validate-syntax]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    runs-on: [self-hosted, finetic]
+
+    env:
+      ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'production' || 'test' }}
+
+    steps:
+      - name: 🧾 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🔑 Start SSH Agent
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.deploy_ssh_key }}
+
+      - name: 📦 Rsync Manifests to Server
+        run: |
+          rsync -avz --delete -e "ssh $SSH_OPTS" \
+          manifests/ ${{ env.SSH_USER }}@${{ env.SSH_HOST }}:"${{ inputs.environment_target }}/${{ env.ENVIRONMENT }}/manifests/" || exit 1
+
+  deploy-modules:
+    name: 🚀 Deploy Puppet Modules
+    needs: [validate-syntax]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    runs-on: [self-hosted, finetic]
+
+    env:
+      ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'production' || 'test' }}
+
+    steps:
+      - name: 🧾 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🔑 Start SSH Agent
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.deploy_ssh_key }}
+
+      - name: 📦 Rsync Modules to Server
+        run: |
+          rsync -avz --delete -e "ssh $SSH_OPTS" \
+          modules/ ${{ env.SSH_USER }}@${{ env.SSH_HOST }}:"${{ inputs.environment_target }}/${{ env.ENVIRONMENT }}/modules/" || exit 1
