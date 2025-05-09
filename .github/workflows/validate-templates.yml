@@ -1,0 +1,43 @@
+---
+name: Validate Workflow Templates
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/**.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/**.yml'
+
+jobs:
+  validate:
+    name: Check syntax & structure
+    runs-on: ubuntu-latest
+    concurrency:
+      group: validate-templates-${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}-validate
+      cancel-in-progress: true
+
+    steps:
+      - name: 🧾 Checkout Code (eerste poging)
+        uses: actions/checkout@v4
+        continue-on-error: true
+
+      - name: 🔁 Retry Checkout (indien eerste faalt)
+        if: failure()
+        uses: actions/checkout@v4
+
+
+      - name: 🛠️ Download yamllint config vanuit deployers
+        run: |
+          curl -sL https://raw.githubusercontent.com/finetic/deployers/main/.yamllint.yml -o .yamllint.yml
+
+      - name: Check workflow YAML syntax
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          config_file: .yamllint.yml
+
+      - name: Require expected workflow names
+        run: |
+          ls .github/workflows | grep -qE 'puppet.yml|statamic.yml' || \
+          (echo '❌ Eén of meer verwachte workflows ontbreken' && exit 1)

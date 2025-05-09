@@ -1,3 +1,4 @@
+---
 name: Deploy Statamic Site
 
 on:
@@ -33,15 +34,24 @@ env:
 jobs:
   test-backend:
     name: Test Backend (PHP Matrix)
-    runs-on: [self-hosted, finetic]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: statamic-${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}-backend
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
         php-version: ${{ fromJson(inputs.php_versions) }}
 
     steps:
-      - name: 🧾 Checkout Code
+      - name: 🧾 Checkout Code (eerste poging)
         uses: actions/checkout@v4
+        continue-on-error: true
+
+      - name: 🔁 Retry Checkout (indien eerste faalt)
+        if: failure()
+        uses: actions/checkout@v4
+
 
       - name: 🧪 Setup PHP ${{ matrix.php-version }}
         uses: shivammathur/setup-php@v2
@@ -58,7 +68,8 @@ jobs:
           restore-keys: composer-
 
       - name: 📦 Install Composer Dependencies
-        run: composer install --no-progress --prefer-dist --optimize-autoloader
+        run: composer install --no-progress --prefer-dist \
+          --optimize-autoloader
 
       - name: 🔍 Run PHP Linter (phpcs)
         run: vendor/bin/phpcs
@@ -68,11 +79,20 @@ jobs:
 
   test-frontend:
     name: Test Frontend
-    runs-on: [self-hosted, finetic]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: statamic-${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}-frontend
+      cancel-in-progress: true
 
     steps:
-      - name: 🧾 Checkout Code
+      - name: 🧾 Checkout Code (eerste poging)
         uses: actions/checkout@v4
+        continue-on-error: true
+
+      - name: 🔁 Retry Checkout (indien eerste faalt)
+        if: failure()
+        uses: actions/checkout@v4
+
 
       - name: 🧪 Setup Node
         uses: actions/setup-node@v4
@@ -102,15 +122,26 @@ jobs:
     name: Build & Push Docker Image
     runs-on: [self-hosted, finetic]
     needs: [test-backend, test-frontend]
+    concurrency:
+      group: statamic-${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}-build
+      cancel-in-progress: true
 
     env:
       IMAGE_NAME: statamic-${{ inputs.site_name }}
       DOCKER_IMAGE_TAG: ${{ github.ref == 'refs/heads/main' && 'production' || 'acceptance' }}
-      DOCKER_DIRECTORY: ${{ github.ref == 'refs/heads/main' && format('{0}-website/{0}-prod', inputs.site_name) || format('{0}-website/{0}-acc', inputs.site_name) }}
+      DOCKER_DIRECTORY: ${{ github.ref == 'refs/heads/main'
+        && format('{0}-website/{0}-prod', inputs.site_name)
+        || format('{0}-website/{0}-acc', inputs.site_name) }}
 
     steps:
-      - name: 🧾 Checkout Code
+      - name: 🧾 Checkout Code (eerste poging)
         uses: actions/checkout@v4
+        continue-on-error: true
+
+      - name: 🔁 Retry Checkout (indien eerste faalt)
+        if: failure()
+        uses: actions/checkout@v4
+
 
       - name: 🔧 Git SSH Config
         run: |
@@ -158,8 +189,11 @@ jobs:
   deploy:
     name: Deploy to Server
     runs-on: [self-hosted, finetic]
+    concurrency:
+      group: statamic-${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}-deploy
+      cancel-in-progress: false
     needs: build
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/acceptance'
+    if: "github.ref == 'refs/heads/main' || github.ref == 'refs/heads/acceptance'"
 
     steps:
       - name: 🔑 Setup SSH Key
@@ -171,5 +205,6 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/id_ed25519 deployment@${{ inputs.server }} "
             docker compose -f /opt/docker/${{ env.DOCKER_DIRECTORY }}/docker-compose.yml pull &&
-            docker compose -f /opt/docker/${{ env.DOCKER_DIRECTORY }}/docker-compose.yml up -d --pull always --no-deps
+            docker compose -f /opt/docker/${{ env.DOCKER_DIRECTORY }}/docker-compose.yml up -d \
+            --pull always --no-deps \
           "
