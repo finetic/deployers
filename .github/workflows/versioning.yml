@@ -1,0 +1,83 @@
+---
+name: Version & Tagging
+
+on:
+  workflow_call:
+
+jobs:
+  tag_and_changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      - name: Validate semantic commits (pull request)
+        if: github.event_name == 'pull_request'
+        uses: amannn/action-semantic-pull-request@v5
+        with:
+          types: |
+            feat
+            fix
+            chore
+            docs
+            refactor
+            style
+            test
+
+      - name: Validate semantic commits (push fallback)
+        if: github.event_name == 'push'
+        run: |
+          echo "🔍 Validating semantic commits on push..."
+          COMMITS=$(git log --format=%s ${{ github.event.before }}..${{ github.sha }})
+          echo "$COMMITS" | while read -r line; do
+            if [[ ! "$line" =~ ^(feat|fix|chore|docs|refactor|style|test)\([^)]+\):\ .+ ]]; then
+              echo "❌ Invalid commit message: '$line'"
+              echo "💡 Use: <type>(<ticket>): <description>"
+              exit 1
+            fi
+          done
+
+      - name: Get version from VERSION file
+        id: version
+        run: |
+          if [ ! -f VERSION ]; then
+            echo "❌ VERSION file not found!"
+            exit 1
+          fi
+          VERSION=$(cat VERSION | tr -d '\n')
+          if [[ ! $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ VERSION must be in format x.y.z"
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if tag already exists
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "❌ Tag $TAG already exists!"
+            exit 1
+          fi
+
+      - name: Ensure CHANGELOG.md exists
+        run: |
+          if [ ! -f CHANGELOG.md ]; then
+            echo "# Changelog" > CHANGELOG.md
+          fi
+
+      - name: Generate changelog from commits
+        run: |
+          echo -e "\n## v${{ steps.version.outputs.version }} - $(date '+%Y-%m-%d')" >> CHANGELOG.md
+          git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD >> CHANGELOG.md
+
+      - name: Commit & Tag
+        run: |
+          git add CHANGELOG.md
+          git commit -m "🔖 ${{ steps.version.outputs.version }} release"
+          git tag -a "${{ steps.version.outputs.version }}" -m "Release ${{ steps.version.outputs.version }}"
+          git push origin HEAD --follow-tags

@@ -1,0 +1,17 @@
+<type>(<ticketnumber>): <korte beschrijving van de wijziging>
+
+# Types:
+# feat     = nieuwe functionaliteit
+# fix      = bugfix of foutcorrectie
+# chore    = build/dependency/hulptools wijziging
+# docs     = alleen documentatie
+# refactor = herstructurering zonder functionele wijziging
+# style    = alleen opmaak (bijv. tabs naar spaties)
+# test     = toevoeging/wijziging van testen
+
+# Voorbeeld:
+# feat(1234): voeg login functionaliteit toe
+# fix(5678): los fout op met lege winkelwagen
+# chore(8910): update composer packages
+
+# <ticketnumber> = verplicht, verwijst naar ClickUp/JIRA/issue-ID
