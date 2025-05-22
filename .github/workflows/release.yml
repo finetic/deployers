@@ -1,0 +1,12 @@
+---
+name: Trigger Version & Tagging
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  versioning:
+    uses: finetic/deployers/.github/workflows/versioning.yml@main

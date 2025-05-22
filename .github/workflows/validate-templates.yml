@@ -27,7 +27,6 @@ jobs:
         if: failure()
         uses: actions/checkout@v4
 
-
       - name: 🛠️ Download yamllint config vanuit deployers
         run: |
           curl -sL https://raw.githubusercontent.com/finetic/deployers/main/.yamllint.yml -o .yamllint.yml
