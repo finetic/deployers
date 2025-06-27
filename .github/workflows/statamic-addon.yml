@@ -6,11 +6,11 @@ on:
 
 jobs:
   check:
+    name: Check Addon Quality (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
         php: [8.3]
-        statamic: [5.*]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -19,15 +19,11 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
+          tools: phpunit-bridge
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, pgsql, gd, exif, amqp
 
       - name: Composer validate
         run: composer validate --strict
-
-      - name: Composer install
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
-
-      - name: Install Statamic (clean install)
-        run: composer require statamic/cms:${{ matrix.statamic }} --dev --no-interaction --prefer-dist
 
       - name: Lint PHP files (php -l)
         run: |
