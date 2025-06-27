@@ -16,3 +16,6 @@
 
 ## v0.0.6 - 2025-06-27
 - feat(STATAMIC-273): add checks for statamic addon
+
+## v0.0.7 - 2025-06-27
+- feat(STATAMIC-273): statamic-addon check change
