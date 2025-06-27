@@ -61,13 +61,35 @@ jobs:
             echo "# Changelog" > CHANGELOG.md
           fi
 
-      - name: Generate changelog from commits
+      - name: Generate changelog from commits (nieuwste eerst, alles gesorteerd)
         run: |
-          if [ ! -f CHANGELOG.md ]; then echo "# Changelog" > CHANGELOG.md; fi
-          echo -e "\n## v${{ steps.version.outputs.version }} - $(date '+%Y-%m-%d')" >> CHANGELOG.md
+          # 1. Bouw de nieuwe sectie
+          echo "# Changelog" > changelog_new.md
+          echo -e "\n## v${{ steps.version.outputs.version }} - $(date '+%Y-%m-%d')" >> changelog_new.md
           git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD \
-            | grep -vi '\[skip ci\]' >> CHANGELOG.md || true
-          true
+            | grep -vi '\[skip ci\]' >> changelog_new.md || true
+
+          # 2. Pak oude secties zonder kopregel
+          if [ -f CHANGELOG.md ]; then
+            # Sla eerste regel (# Changelog) over
+            tail -n +2 CHANGELOG.md > _old_changelog.md
+
+            # Splits bestaande changelog in blokken op '## v', prepend deze met '## v'
+            awk -v RS='\n## v' -v ORS='' 'NR>1{print "## v"$0}' _old_changelog.md > _split.md
+
+            # Sorteer alle blokken op versieheader, van nieuw naar oud
+            csplit -f section_ -b "%03d.md" _split.md '/^## v/' '{*}'
+            ls section_*.md | sort -r > sections_sorted.txt
+
+            # Zet alle gesorteerde blokken achter elkaar
+            while read sec; do cat "$sec"; echo; done < sections_sorted.txt >> changelog_new.md
+
+            # Ruim op
+            rm _old_changelog.md _split.md section_*.md sections_sorted.txt 2>/dev/null || true
+          fi
+
+          # 3. Vervang changelog
+          mv changelog_new.md CHANGELOG.md
 
       - name: Commit & Tag
         run: |
