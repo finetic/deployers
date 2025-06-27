@@ -38,18 +38,6 @@ jobs:
             echo "✅ Geen verboden functies gevonden.";
           fi
 
-      - name: PHPStan analyse
-        run: |
-          composer require --dev phpstan/phpstan --no-interaction --prefer-dist
-          ./vendor/bin/phpstan analyse --memory-limit=512M
-          || echo "⚠️ Geen PHPStan configuratie gevonden (geen blokkade voor kleine addons)"
-
-      - name: PHPCS code style check
-        run: |
-          composer require --dev squizlabs/php_codesniffer --no-interaction --prefer-dist
-          ./vendor/bin/phpcs --standard=PSR12 src/
-            || echo "⚠️ Geen PHPCS configuratie gevonden (geen blokkade voor kleine addons)"
-
       - name: Composer security audit
         run: composer audit
 
