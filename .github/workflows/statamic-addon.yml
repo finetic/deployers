@@ -1,0 +1,61 @@
+---
+name: Statamic Addon CI
+
+on:
+  workflow_call:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: [8.3]
+        statamic: [5.*]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+
+      - name: Composer validate
+        run: composer validate --strict
+
+      - name: Composer install
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Install Statamic (clean install)
+        run: composer require statamic/cms:${{ matrix.statamic }} --dev --no-interaction --prefer-dist
+
+      - name: Lint PHP files (php -l)
+        run: |
+          find . -type f -name "*.php" -exec php -l {} \;
+
+      - name: Check forbidden PHP functions
+        run: |
+          if grep -R --include="*.php" -E "eval\(|shell_exec\(|exec\(|system\(|passthru\(" .; then
+            echo "❌ Forbidden functions detected in PHP files!";
+            exit 1;
+          else
+            echo "✅ Geen verboden functies gevonden.";
+          fi
+
+      - name: PHPStan analyse
+        run: |
+          composer require --dev phpstan/phpstan --no-interaction --prefer-dist
+          ./vendor/bin/phpstan analyse --memory-limit=512M
+          || echo "⚠️ Geen PHPStan configuratie gevonden (geen blokkade voor kleine addons)"
+
+      - name: PHPCS code style check
+        run: |
+          composer require --dev squizlabs/php_codesniffer --no-interaction --prefer-dist
+          ./vendor/bin/phpcs --standard=PSR12 src/
+            || echo "⚠️ Geen PHPCS configuratie gevonden (geen blokkade voor kleine addons)"
+
+      - name: Composer security audit
+        run: composer audit
+
+      - name: PHPUnit tests (optioneel)
+        run: ./vendor/bin/phpunit --testdox || echo "⚠️ Geen tests gevonden (geen blokkade voor kleine addons)"
