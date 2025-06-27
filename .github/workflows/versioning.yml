@@ -67,6 +67,7 @@ jobs:
           echo -e "\n## v${{ steps.version.outputs.version }} - $(date '+%Y-%m-%d')" >> CHANGELOG.md
           git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD \
             | grep -vi '\[skip ci\]' >> CHANGELOG.md || true
+          true
 
       - name: Commit & Tag
         run: |
