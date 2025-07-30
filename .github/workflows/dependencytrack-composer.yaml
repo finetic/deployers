@@ -1,0 +1,48 @@
+name: Dependency Track
+
+on:
+  workflow_call:
+    inputs:
+      composer_location:
+        required: false
+        type: string
+        default: '.'
+      project_uuid:
+        required: true
+        type: string
+
+jobs:
+  generate-sbom:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          extensions: dom,json,libxml
+          tools: 'composer:v2'
+
+      - name: Install SBOM composer plugin
+        run: |-
+          cd ${{inputs.composer_location}}
+          composer global config --no-plugins allow-plugins.cyclonedx/cyclonedx-php-composer true
+          composer global require cyclonedx/cyclonedx-php-composer
+
+      - name: Create SBOM step
+        # see for usage: https://packagist.org/packages/cyclonedx/cyclonedx-php-composer
+        run: |-
+          cd ${{inputs.composer_location}}
+          composer CycloneDX:make-sbom --output-file=sbom.xml
+
+      - name: upload
+        uses: DependencyTrack/gh-upload-sbom@v3
+        with:
+          serverhostname: ${{vars.DEPENDENCY_TRACK_HOSTNAME}}
+          apikey: ${{secrets.DEPENDENCY_TRACK_API_KEY}}
+          project: ${{inputs.project_uuid}}
+          bomfilename: ${{inputs.composer_location}}/sbom.xml
+          autocreate: false

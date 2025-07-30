@@ -1,0 +1,51 @@
+name: Dependency Track
+
+on:
+  workflow_call:
+    inputs:
+      package_location:
+        required: false
+        type: string
+        default: '.'
+      project_uuid:
+        required: true
+        type: string
+
+jobs:
+  generate-sbom:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup npm
+        uses: actions/setup-node@v3
+        with:
+          node-version: '22'
+
+      - name: Install SBOM composer plugin
+        run: |-
+          cd ${{inputs.package_location}} 
+          npm install --global @cyclonedx/cyclonedx-npm
+
+      - name: Install npm packages
+        run: |-
+          cd ${{inputs.package_location}} 
+          npm install
+
+      - name: Create SBOM step
+        # see for usage: https://www.npmjs.com/package/@cyclonedx/cyclonedx-npm
+        run: |-
+          cd ${{inputs.package_location}} 
+          cyclonedx-npm --output-format XML --output-file sbom.xml
+
+      - name: upload
+        uses: DependencyTrack/gh-upload-sbom@v3
+        with:
+          serverhostname: ${{vars.DEPENDENCY_TRACK_HOSTNAME}}
+          apikey: ${{secrets.DEPENDENCY_TRACK_API_KEY}}
+          project: ${{inputs.project_uuid}}
+          bomfilename: ${{inputs.package_location}}/sbom.xml
+          autocreate: false
