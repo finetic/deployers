@@ -32,7 +32,7 @@ jobs:
           source ./venv/bin/activate
           python3 -m pip install -r requirements.txt
           python3 -m pip install cyclonedx-bom
-          cyclonedx-py requirements >sbom.json
+          cyclonedx-py environment >sbom.json
 
       - name: upload
         uses: DependencyTrack/gh-upload-sbom@v3
