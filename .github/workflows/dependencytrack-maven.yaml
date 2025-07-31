@@ -1,0 +1,42 @@
+name: Dependency Track
+
+on:
+  workflow_call:
+    inputs:
+      pom_location:
+        required: false
+        type: string
+        default: '.'
+      project_uuid:
+        required: true
+        type: string
+
+jobs:
+  generate-sbom:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Java and Maven
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: maven
+
+      - name: Install SBOM plugin
+        run: |-
+          cd ${{inputs.pom_location}}          
+          mvn clean package
+
+      - name: upload
+        uses: DependencyTrack/gh-upload-sbom@v3
+        with:
+          serverhostname: ${{vars.DEPENDENCY_TRACK_HOSTNAME}}
+          apikey: ${{secrets.DEPENDENCY_TRACK_API_KEY}}
+          project: ${{inputs.project_uuid}}
+          bomfilename: ${{inputs.pom_location}}/target/bom.xml
+          autocreate: false
