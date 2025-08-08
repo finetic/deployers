@@ -7,6 +7,9 @@ on:
       site_name:
         required: true
         type: string
+      git_user_name:
+        required: true
+        type: string
       git_repo_url:
         required: true
         type: string
@@ -18,40 +21,21 @@ on:
         type: string
         default: '["8.3"]'
 
-    secrets:
-      deployment_key:
-        required: true
-      nexus_docker_username:
-        required: true
-      nexus_docker_password:
-        required: true
-      git_private_ssh_key:
-        required: true
-
 env:
   IMAGE_REGISTRY: docker.finetic.dev
 
 jobs:
   test-backend:
-    name: Test Backend (PHP Matrix)
+    name: Test Backend (PHP ${{ matrix.php-version }})
     runs-on: ubuntu-latest
-    concurrency:
-      group: statamic-${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}-backend
-      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
         php-version: ${{ fromJson(inputs.php_versions) }}
 
     steps:
-      - name: 🧾 Checkout Code (eerste poging)
+      - name: 🧾 Checkout Code
         uses: actions/checkout@v4
-        continue-on-error: true
-
-      - name: 🔁 Retry Checkout (indien eerste faalt)
-        if: failure()
-        uses: actions/checkout@v4
-
 
       - name: 🧪 Setup PHP ${{ matrix.php-version }}
         uses: shivammathur/setup-php@v2
@@ -67,32 +51,31 @@ jobs:
           key: composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: composer-
 
+      -   name: Setup COMPOSER_AUTH
+          run: |
+            mkdir -p ~/.config/composer
+            echo "$COMPOSER_AUTH" > ~/.config/composer/auth.json
+          env:
+            COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
+
+      - name: Upgrade Composer
+        run: composer self-update
+
       - name: 📦 Install Composer Dependencies
-        run: composer install --no-progress --prefer-dist \
-          --optimize-autoloader
+        run: composer install --no-progress --prefer-dist --optimize-autoloader
 
       - name: 🔍 Run PHP Linter (phpcs)
-        run: vendor/bin/phpcs
+        run: php vendor/bin/phpcs
 
       - name: 🧠 Run PHPStan
-        run: vendor/bin/phpstan
+        run: php vendor/bin/phpstan
 
   test-frontend:
     name: Test Frontend
     runs-on: ubuntu-latest
-    concurrency:
-      group: statamic-${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}-frontend
-      cancel-in-progress: true
-
     steps:
-      - name: 🧾 Checkout Code (eerste poging)
+      - name: 🧾 Checkout Code
         uses: actions/checkout@v4
-        continue-on-error: true
-
-      - name: 🔁 Retry Checkout (indien eerste faalt)
-        if: failure()
-        uses: actions/checkout@v4
-
 
       - name: 🧪 Setup Node
         uses: actions/setup-node@v4
@@ -120,33 +103,25 @@ jobs:
 
   build:
     name: Build & Push Docker Image
-    runs-on: [self-hosted, finetic]
+    runs-on: ubuntu-latest
     needs: [test-backend, test-frontend]
-    concurrency:
-      group: statamic-${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}-build
-      cancel-in-progress: true
 
     env:
       IMAGE_NAME: statamic-${{ inputs.site_name }}
+      GIT_USER_NAME: ${{ inputs.git_user_name }}
       DOCKER_IMAGE_TAG: ${{ github.ref == 'refs/heads/main' && 'production' || 'acceptance' }}
       DOCKER_DIRECTORY: ${{ github.ref == 'refs/heads/main'
         && format('{0}-website/{0}-prod', inputs.site_name)
         || format('{0}-website/{0}-acc', inputs.site_name) }}
 
     steps:
-      - name: 🧾 Checkout Code (eerste poging)
+      - name: 🧾 Checkout Code
         uses: actions/checkout@v4
-        continue-on-error: true
-
-      - name: 🔁 Retry Checkout (indien eerste faalt)
-        if: failure()
-        uses: actions/checkout@v4
-
 
       - name: 🔧 Git SSH Config
         run: |
-          git config --global user.name "${{ inputs.site_name }}"
-          git config --global user.email "${{ inputs.site_name }}@finetic.nl"
+          git config --global user.name "$GIT_USER_NAME"
+          git config --global user.email "$GIT_USER_NAME@finetic.nl"
           git config --global core.sshCommand "ssh -o StrictHostKeyChecking=accept-new"
           git remote set-url origin ${{ inputs.git_repo_url }}
 
@@ -170,11 +145,11 @@ jobs:
       - name: 🏗️ Build & Push Docker Image
         run: |
           docker buildx build \
-            --platform linux/amd64,linux/arm64 \
+            --platform linux/amd64 \
             --push \
             --label "vendor=Finetic" \
             --build-arg GIT_REVISION=${GITHUB_SHA} \
-            --build-arg GIT_USER_NAME=${{ inputs.site_name }} \
+            --build-arg GIT_USER_NAME=$GIT_USER_NAME \
             --build-arg GIT_PRIVATE_SSH_KEY="${{ secrets.git_private_ssh_key }}" \
             -t "$IMAGE_REGISTRY/finetic/websites/${{ env.IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}" \
             --file docker/prod/Dockerfile \
@@ -188,10 +163,7 @@ jobs:
 
   deploy:
     name: Deploy to Server
-    runs-on: [self-hosted, finetic]
-    concurrency:
-      group: statamic-${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}-deploy
-      cancel-in-progress: false
+    runs-on: ubuntu-latest
     needs: build
     if: "github.ref == 'refs/heads/main' || github.ref == 'refs/heads/acceptance'"
 
