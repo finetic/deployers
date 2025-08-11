@@ -28,18 +28,18 @@ jobs:
 
       - name: Install SBOM composer plugin
         run: |-
-          cd ${{inputs.package_location}} 
+          cd ${{inputs.package_location}}
           npm install --global @cyclonedx/cyclonedx-npm
 
       - name: Install npm packages
         run: |-
-          cd ${{inputs.package_location}} 
+          cd ${{inputs.package_location}}
           npm install
 
       - name: Create SBOM step
         # see for usage: https://www.npmjs.com/package/@cyclonedx/cyclonedx-npm
         run: |-
-          cd ${{inputs.package_location}} 
+          cd ${{inputs.package_location}}
           cyclonedx-npm --output-format XML --output-file sbom.xml
 
       - name: upload

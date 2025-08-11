@@ -56,12 +56,12 @@ jobs:
           key: composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: composer-
 
-      -   name: Setup COMPOSER_AUTH
-          run: |
-            mkdir -p ~/.config/composer
-            echo "$COMPOSER_AUTH" > ~/.config/composer/auth.json
-          env:
-            COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
+      - name: Setup COMPOSER_AUTH
+        run: |
+          mkdir -p ~/.config/composer
+          echo "$COMPOSER_AUTH" > ~/.config/composer/auth.json
+        env:
+          COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
 
       - name: Upgrade Composer
         run: composer self-update

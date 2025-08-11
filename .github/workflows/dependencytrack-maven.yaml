@@ -30,7 +30,7 @@ jobs:
 
       - name: Install SBOM plugin
         run: |-
-          cd ${{inputs.pom_location}}          
+          cd ${{inputs.pom_location}}
           mvn clean package
 
       - name: upload
