@@ -67,7 +67,8 @@ jobs:
         run: composer self-update
 
       - name: 📦 Install Composer Dependencies
-        run: composer install --no-progress --prefer-dist --optimize-autoloader
+        run: |
+          composer install --no-interaction --no-progress --prefer-dist -o
 
       - name: 🔍 Run PHP Linter (phpcs)
         run: php vendor/bin/phpcs
