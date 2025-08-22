@@ -11,11 +11,15 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GIT_PRIVATE_SSH_KEY || github.token }}
 
       - name: Setup Git
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
+          git config lfs.${{ steps.repo.outputs.url }}/info/lfs.locksverify true
 
       - name: Fetch full git history (for push validation)
         if: github.event_name == 'push'
@@ -50,9 +54,10 @@ jobs:
 
       - name: Check if tag already exists
         run: |
+          git fetch --tags --prune
           TAG="v${{ steps.version.outputs.version }}"
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "❌ Tag $TAG already exists!"
+          if git rev-parse "${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "❌ Tag ${{ steps.version.outputs.version }} already exists!"
             exit 1
           fi
 
@@ -62,7 +67,7 @@ jobs:
             echo "# Changelog" > CHANGELOG.md
           fi
 
-      - name: Generate changelog from commits (nieuwste eerst, alles gesorteerd)
+      - name: Generate changelog from commits (nieuwste eerst, semver gesorteerd)
         run: |
           # 1. Bouw de nieuwe sectie
           echo "# Changelog" > changelog_new.md
@@ -72,29 +77,33 @@ jobs:
 
           # 2. Pak oude secties zonder kopregel
           if [ -f CHANGELOG.md ]; then
-            # Sla eerste regel (# Changelog) over
             tail -n +2 CHANGELOG.md > _old_changelog.md
 
-            # Splits bestaande changelog in blokken op '## v', prepend deze met '## v'
+            # Splits bestaande changelog in blokken per versie
             awk -v RS='\n## v' -v ORS='' 'NR>1{print "## v"$0}' _old_changelog.md > _split.md
 
-            # Sorteer alle blokken op versieheader, van nieuw naar oud
-            csplit -f section_ -b "%03d.md" _split.md '/^## v/' '{*}'
-            ls section_*.md | sort -r > sections_sorted.txt
+            # Haal alle versies eruit en sorteer semantisch (nieuw → oud)
+            grep '^## v' _split.md | sed -E 's/^## v([0-9]+\.[0-9]+\.[0-9]+).*/\1/' | sort -Vr > versions_sorted.txt
 
-            # Zet alle gesorteerde blokken achter elkaar
-            while read sec; do cat "$sec"; echo; done < sections_sorted.txt >> changelog_new.md
+            # Voor elke versie, pak de juiste blokken in semver-volgorde
+            while read ver; do
+              awk -v v="## v$ver" -v RS='\n## v' -v ORS='' '$0 ~ v {print "## v"$0}' _split.md
+              echo
+            done < versions_sorted.txt >> changelog_new.md
 
-            # Ruim op
-            rm _old_changelog.md _split.md section_*.md sections_sorted.txt 2>/dev/null || true
+            rm _old_changelog.md _split.md versions_sorted.txt 2>/dev/null || true
           fi
 
           # 3. Vervang changelog
           mv changelog_new.md CHANGELOG.md
 
-      - name: Commit & Tag
+      - name: Commit CHANGELOG only
         run: |
           git add CHANGELOG.md
-          git commit -m "🔖 ${{ steps.version.outputs.version }} release"
+          git commit -m "[skip ci] 🔖 ${{ steps.version.outputs.version }} release" || echo "No Changes"
+          git push origin HEAD:main
+
+      - name: Create & push tag (vX.Y.Z)
+        run: |
           git tag -a "${{ steps.version.outputs.version }}" -m "Release ${{ steps.version.outputs.version }}"
-          git push origin HEAD --follow-tags
+          git push origin "refs/tags/${{ steps.version.outputs.version }}"
