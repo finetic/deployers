@@ -67,35 +67,56 @@ jobs:
             echo "# Changelog" > CHANGELOG.md
           fi
 
-      - name: Generate changelog from commits (nieuwste eerst, semver gesorteerd)
+      - name: Generate changelog (newest first, semver, skip '[skip ci]')
         run: |
-          # 1. Bouw de nieuwe sectie
-          echo "# Changelog" > changelog_new.md
-          echo -e "\n## v${{ steps.version.outputs.version }} - $(date '+%Y-%m-%d')" >> changelog_new.md
-          git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD \
-            | grep -vi '\[skip ci\]' >> changelog_new.md || true
+          set -euo pipefail
 
-          # 2. Pak oude secties zonder kopregel
+          V="v${{ steps.version.outputs.version }}"
+          DATE="$(date '+%Y-%m-%d')"
+
+          # Bepaal bereik sinds vorige tag (excl. vorige tag, incl. HEAD)
+          PREV_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          RANGE="${PREV_TAG:+${PREV_TAG}..}HEAD"
+
+          # 1) Bouw nieuwe sectie bovenaan
+          {
+            echo "# Changelog"
+            echo
+            echo "## ${V} - ${DATE}"
+            git log --no-merges --pretty=format:"- %s" ${RANGE} | grep -vi '\[skip ci\]' || true
+            echo
+          } > CHANGELOG.new
+
+          # 2) Pak oude secties en sorteer ze semver (nieuw -> oud)
           if [ -f CHANGELOG.md ]; then
-            tail -n +2 CHANGELOG.md > _old_changelog.md
+            # Sla hoofdkop (# Changelog) over
+            tail -n +2 CHANGELOG.md > _old.md || true
 
-            # Splits bestaande changelog in blokken per versie
-            awk -v RS='\n## v' -v ORS='' 'NR>1{print "## v"$0}' _old_changelog.md > _split.md
+            # Schrijf elke bestaande sectie naar eigen bestand, op basis van '## vX.Y.Z - ...'
+            # Bestandsnaam wordt section_X.Y.Z.md (zonder 'v'), zodat sort -V werkt.
+            awk '
+              /^## v[0-9]+\.[0-9]+\.[0-9]+/ {
+                if (out) close(out);
+                ver=$2; gsub(/^v/,"",ver);
+                out=sprintf("section_%s.md", ver);
+              }
+              { if (out) print > out }
+            ' _old.md
 
-            # Haal alle versies eruit en sorteer semantisch (nieuw → oud)
-            grep '^## v' _split.md | sed -E 's/^## v([0-9]+\.[0-9]+\.[0-9]+).*/\1/' | sort -Vr > versions_sorted.txt
+            # Concateneer alle sectie-bestanden in semantische volgorde (hoog -> laag)
+            ls section_*.md 2>/dev/null \
+              | sed -E 's#^section_(.*)\.md$#\1#' \
+              | sort -Vr \
+              | while read -r ver; do
+                  cat "section_${ver}.md"
+                  echo
+                done >> CHANGELOG.new
 
-            # Voor elke versie, pak de juiste blokken in semver-volgorde
-            while read ver; do
-              awk -v v="## v$ver" -v RS='\n## v' -v ORS='' '$0 ~ v {print "## v"$0}' _split.md
-              echo
-            done < versions_sorted.txt >> changelog_new.md
-
-            rm _old_changelog.md _split.md versions_sorted.txt 2>/dev/null || true
+            rm -f _old.md section_*.md
           fi
 
-          # 3. Vervang changelog
-          mv changelog_new.md CHANGELOG.md
+          # 3) Vervang changelog
+          mv CHANGELOG.new CHANGELOG.md
 
       - name: Commit CHANGELOG only
         run: |
