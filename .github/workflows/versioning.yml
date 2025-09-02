@@ -112,7 +112,7 @@ jobs:
                       cat "section_${ver}.md"
                       echo
                     done >> CHANGELOG.new
-            if
+            fi
 
             rm -f _old.md section_*.md
           fi
