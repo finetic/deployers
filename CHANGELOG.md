@@ -1,10 +1,16 @@
 # Changelog
 
+## v0.0.22 - 2025-09-02
+- update version deployer
+- update version deployer
+
 ## v0.0.20 - 2025-08-22
 - refactor(STATAMIC-357): make git user/email variable
 
+
 ## v0.0.19 - 2025-08-22
 - fix(STATAMIC-357): changelog fixen
+
 
 
 ## v0.0.18 - 2025-08-22
@@ -12,16 +18,20 @@
 - refactor(STATAMIC-357): Rechten t.a.v. changelog fixen
 
 
+
 ## v0.0.17 - 2025-08-11
 - update yml file syntax
+
 
 
 ## v0.0.15 - 2025-08-11
 - update yml file syntax
 
 
+
 ## v0.0.13 - 2025-08-11
 - update yml file syntax
+
 
 
 ## v0.0.11 - 2025-08-08
@@ -30,11 +40,14 @@
 - Fix cyclonedx for python (requirements -> environment)
 
 
+
 ## v0.0.9 - 2025-06-27
 - feat(STATAMIC-273): sort changelog
 
 
+
 ## v0.0.8 - 2025-06-27
 - feat(STATAMIC-273): statamic-addon check change
+
 
 
