@@ -104,13 +104,15 @@ jobs:
             ' _old.md
 
             # Concateneer alle sectie-bestanden in semantische volgorde (hoog -> laag)
-            ls section_*.md 2>/dev/null \
-              | sed -E 's#^section_(.*)\.md$#\1#' \
-              | sort -Vr \
-              | while read -r ver; do
-                  cat "section_${ver}.md"
-                  echo
-                done >> CHANGELOG.new
+            if compgen -G 'section_*.md' > /dev/null; then
+                ls section_*.md \
+                  | sed -E 's#^section_(.*)\.md$#\1#' \
+                  | sort -Vr \
+                  | while read -r ver; do
+                      cat "section_${ver}.md"
+                      echo
+                    done >> CHANGELOG.new
+            if
 
             rm -f _old.md section_*.md
           fi
