@@ -1,132 +1,202 @@
 ---
-name: Version & Tagging
+name: Version & Release
 
 on:
   workflow_call:
+    secrets: {}
 
 jobs:
-  tag_and_changelog:
+  release:
     runs-on: ubuntu-latest
-    if: ${{ github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: write  # sane default; caller moet óók contents: write zetten
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Checkout full history
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GIT_PRIVATE_SSH_KEY || github.token }}
 
-      - name: Setup Git
+      - name: {Validate contents: "write (dry-run push)"}
+        shell: bash
         run: |
-          git config --global user.name "${{vars.GIT_USERNAME}}"
-          git config --global user.email "${{vars.GIT_EMAIL}}"
-          git config lfs.${{ steps.repo.outputs.url }}/info/lfs.locksverify true
-
-      - name: Fetch full git history (for push validation)
-        if: github.event_name == 'push'
-        run: git fetch --prune --unshallow || echo "Already complete history"
-
-      - name: Validate semantic commits (pull request)
-        if: github.event_name == 'pull_request'
-        uses: amannn/action-semantic-pull-request@v5
-        with:
-          types: |
-            feat
-            fix
-            chore
-            docs
-            refactor
-            style
-            test
+          set -euo pipefail
+          TMP_TAG="__perm_check__$(date +%s)${RANDOM}"
+          if git push --dry-run origin HEAD:"refs/tags/${TMP_TAG}" > /tmp/perm_check.log 2>&1; then
+            echo "✅ contents: write OK"
+          else
+            echo "❌ Caller mist waarschijnlijk: permissions: contents: write"
+            echo "Voorbeeld:"
+            echo "  jobs:"
+            echo "    version_and_release:"
+            echo "      uses: <org>/<repo>/.github/workflows/versioning.yml@main"
+            echo "      permissions:"
+            echo "        contents: write"
+            echo "Git output:"
+            sed -e 's/^/  /' /tmp/perm_check.log || true
+            exit 1
+          fi
 
       - name: Get version from VERSION file
         id: version
+        shell: bash
         run: |
           if [ ! -f VERSION ]; then
             echo "❌ VERSION file not found!"
             exit 1
           fi
-          VERSION=$(cat VERSION | tr -d '\n')
+          VERSION="$(tr -d '\n\r ' < VERSION)"
           if [[ ! $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "❌ VERSION must be in format x.y.z"
             exit 1
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "TAG=v$VERSION" >> "$GITHUB_ENV"
 
       - name: Check if tag already exists
+        id: check_tag
+        shell: bash
         run: |
-          git fetch --tags --prune
-          TAG="v${{ steps.version.outputs.version }}"
-          if git rev-parse "${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
-            echo "❌ Tag ${{ steps.version.outputs.version }} already exists!"
-            exit 1
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${TAG} already exists. Nothing to do."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Ensure CHANGELOG.md exists
+      - name: Find previous tag
+        if: steps.check_tag.outputs.exists == 'false'
+        id: prev
+        shell: bash
         run: |
-          if [ ! -f CHANGELOG.md ]; then
-            echo "# Changelog" > CHANGELOG.md
+          PREV="$(git tag --list 'v*' --sort=-v:refname | head -n1)"
+          if [ "$PREV" = "${TAG}" ]; then
+            PREV="$(git tag --list 'v*' --sort=-v:refname | sed -n '2p')"
           fi
+          echo "prev_tag=$PREV" >> "$GITHUB_OUTPUT"
 
-      - name: Generate changelog (newest first, semver, skip '[skip ci]')
+      - name: Build release notes (grouped & sorted)
+        if: steps.check_tag.outputs.exists == 'false'
+        shell: bash
         run: |
           set -euo pipefail
 
-          V="v${{ steps.version.outputs.version }}"
-          DATE="$(date '+%Y-%m-%d')"
-
-          # Bepaal bereik sinds vorige tag (excl. vorige tag, incl. HEAD)
-          PREV_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
-          RANGE="${PREV_TAG:+${PREV_TAG}..}HEAD"
-
-          # 1) Bouw nieuwe sectie bovenaan
-          {
-            echo "# Changelog"
-            echo
-            echo "## ${V} - ${DATE}"
-            git log --no-merges --pretty=format:"- %s" ${RANGE} | grep -vi '\[skip ci\]' || true
-            echo
-          } > CHANGELOG.new
-
-          # 2) Pak oude secties en sorteer ze semver (nieuw -> oud)
-          if [ -f CHANGELOG.md ]; then
-            # Sla hoofdkop (# Changelog) over
-            tail -n +2 CHANGELOG.md > _old.md || true
-
-            # Schrijf elke bestaande sectie naar eigen bestand, op basis van '## vX.Y.Z - ...'
-            # Bestandsnaam wordt section_X.Y.Z.md (zonder 'v'), zodat sort -V werkt.
-            awk '
-              /^## v[0-9]+\.[0-9]+\.[0-9]+/ {
-                if (out) close(out);
-                ver=$2; gsub(/^v/,"",ver);
-                out=sprintf("section_%s.md", ver);
-              }
-              { if (out) print > out }
-            ' _old.md
-
-            # Concateneer alle sectie-bestanden in semantische volgorde (hoog -> laag)
-            if compgen -G 'section_*.md' > /dev/null; then
-                ls section_*.md \
-                  | sed -E 's#^section_(.*)\.md$#\1#' \
-                  | sort -Vr \
-                  | while read -r ver; do
-                      cat "section_${ver}.md"
-                      echo
-                    done >> CHANGELOG.new
-            fi
-
-            rm -f _old.md section_*.md
+          # Bepaal commit-range
+          PREV="${{ steps.prev.outputs.prev_tag }}"
+          if [ -n "$PREV" ]; then
+            RANGE="${PREV}..HEAD"
+          else
+            RANGE="$(git rev-list --max-parents=0 HEAD)..HEAD"
           fi
 
-          # 3) Vervang changelog
-          mv CHANGELOG.new CHANGELOG.md
+          # Haal commits op: HASH \t SHORT \t SUBJECT \t AUTHOR
+          # Filter [skip ci] case-insensitive en merges verwijderen
+          git log --no-merges --pretty=format:'%H%x09%h%x09%s%x09%an' $RANGE \
+            | grep -vi '\[skip ci\]' \
+            > /tmp/commits.tsv || true
 
-      - name: Commit CHANGELOG only
-        run: |
-          git add CHANGELOG.md
-          git commit -m "[skip ci] 🔖 ${{ steps.version.outputs.version }} release" || echo "No Changes"
-          git push origin HEAD:main
+          # Als er niets is, simpele placeholder
+          if [ ! -s /tmp/commits.tsv ]; then
+            echo "- No user-visible changes." > release_notes.md
+            exit 0
+          fi
 
-      - name: Create & push tag (vX.Y.Z)
+          # Vooraf gedefinieerde categorievolgorde
+          TYPES=("feat" "fix" "perf" "refactor" "docs" "test" "build" "ci" "style" "chore" "revert")
+          # Map: type -> bestandsnaam
+          declare -A FILES
+          for t in "${TYPES[@]}"; do
+            FILES["$t"]="/tmp/sect_${t}.lst"
+            : > "${FILES[$t]}"
+          done
+          OTHER="/tmp/sect_other.lst"; : > "$OTHER"
+
+          # Parse regels, bepaal type en ticketnummer (voor sortering)
+          # Type: ^type(\(scope\))?:  (bijv. feat(DLP-1234): message)
+          # Ticketnummer: eerste getal in de scope of subject (b.v. 1234 uit DLP-1234)
+          while IFS=$'\t' read -r HASH SHORT SUBJ AUTH; do
+            low="$(printf "%s" "$SUBJ" | awk '{ print tolower($0) }')"
+            if [[ "$low" =~ ^([a-z0-9\-]+)(\([^\)]*\))?:[[:space:]]+ ]]; then
+              TYPE="${BASH_REMATCH[1]}"
+            else
+              TYPE="other"
+            fi
+
+            # extract eerste nummer (bijv. 1234 uit DLP-1234 of uit de rest van de subject)
+            NUM=$(printf "%s" "$SUBJ" | grep -oE '[A-Z]+-[0-9]+' | head -n1 | grep -oE '[0-9]+' || true)
+            if [ -z "$NUM" ]; then
+              # fallback: zoek willekeurig nummer in subject
+              NUM=$(printf "%s" "$SUBJ" | grep -oE '[0-9]+' | head -n1 || true)
+            fi
+            if [ -z "$NUM" ]; then
+              NUM="99999999"  # zonder nummer -> onderaan binnen categorie
+            fi
+
+            # Zero-pad voor sortering
+            PAD=$(printf "%08d" "$NUM")
+            LINE="- ${SUBJ} (${SHORT}) — ${AUTH}"
+
+            # append naar juiste categorie
+            if [[ " ${TYPES[*]} " == *" ${TYPE} "* ]]; then
+              echo "${PAD}|${LINE}" >> "${FILES[$TYPE]}"
+            else
+              echo "${PAD}|${LINE}" >> "$OTHER"
+            fi
+          done < /tmp/commits.tsv
+
+          # Schrijf release_notes.md met secties op volgorde; sorteer binnen sectie op nummer
+          : > release_notes.md
+          write_section () {
+            local header="$1"
+            local file="$2"
+            if [ -s "$file" ]; then
+              echo "### ${header}" >> release_notes.md
+              sort -t'|' -k1,1n "$file" | cut -d'|' -f2- >> release_notes.md
+              echo "" >> release_notes.md
+            fi
+          }
+
+          write_section "Features"     "${FILES[feat]}"
+          write_section "Fixes"        "${FILES[fix]}"
+          write_section "Performance"  "${FILES[perf]}"
+          write_section "Refactoring"  "${FILES[refactor]}"
+          write_section "Docs"         "${FILES[docs]}"
+          write_section "Tests"        "${FILES[test]}"
+          write_section "Build"        "${FILES[build]}"
+          write_section "CI"           "${FILES[ci]}"
+          write_section "Style"        "${FILES[style]}"
+          write_section "Chores"       "${FILES[chore]}"
+          write_section "Reverts"      "${FILES[revert]}"
+
+          # Alles zonder (herkend) type onderaan
+          write_section "Overige"      "$OTHER"
+
+          # Fallback als echt niets geschreven is
+          if [ ! -s release_notes.md ]; then
+            echo "- No user-visible changes." > release_notes.md
+          fi
+
+          echo "---- Release notes ----"
+          cat release_notes.md
+          echo "-----------------------"
+
+      - name: Create annotated tag
+        if: steps.check_tag.outputs.exists == 'false'
+        shell: bash
         run: |
-          git tag -a "${{ steps.version.outputs.version }}" -m "Release ${{ steps.version.outputs.version }}"
-          git push origin "refs/tags/${{ steps.version.outputs.version }}"
+          git tag -a "${TAG}" -m "Release ${TAG}"
+          git push origin "refs/tags/${TAG}"
+
+      - name: Create GitHub Release
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: ${{ env.TAG }}
+          body_path: release_notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Nothing to release (tag existed)
+        if: steps.check_tag.outputs.exists == 'true'
+        run: echo "Release already exists for ${TAG}; skipping."
