@@ -16,6 +16,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GIT_PRIVATE_SSH_KEY || github.token }}
+
+      - name: Setup Git
+        run: |
+          git config --global user.name "${{vars.GIT_USERNAME}}"
+          git config --global user.email "${{vars.GIT_EMAIL}}"
+          git config lfs.${{ steps.repo.outputs.url }}/info/lfs.locksverify true
 
       - name: Validate contents write (dry-run push)
         shell: bash
