@@ -10,3 +10,5 @@ on:
 jobs:
   versioning:
     uses: finetic/deployers/.github/workflows/versioning.yml@main
+    permissions:
+      contents: write
