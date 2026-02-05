@@ -40,7 +40,7 @@ jobs:
         # see for usage: https://www.npmjs.com/package/@cyclonedx/cyclonedx-npm
         run: |-
           cd ${{inputs.package_location}}
-          cyclonedx-npm --output-format XML --output-file sbom.xml
+          cyclonedx-npm --output-format XML --output-file sbom.xml --ignore-errors
 
       - name: upload
         uses: DependencyTrack/gh-upload-sbom@v3
