@@ -34,7 +34,7 @@ jobs:
       - name: Install npm packages
         run: |-
           cd ${{inputs.package_location}}
-          npm install
+          npm ci
 
       - name: Create SBOM step
         # see for usage: https://www.npmjs.com/package/@cyclonedx/cyclonedx-npm
