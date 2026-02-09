@@ -7,12 +7,6 @@ on:
       site_name:
         required: true
         type: string
-      git_user_name:
-        required: true
-        type: string
-      git_repo_url:
-        required: true
-        type: string
       server:
         required: true
         type: string
@@ -35,21 +29,26 @@ jobs:
 
     steps:
       - name: 🧾 Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🧪 Setup PHP ${{ matrix.php-version }}
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php-version }}
           tools: phpunit-bridge
-          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, pgsql, gd, exif, amqp
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, pgsql, exif, amqp
 
-      - name: 💾 Restore Composer Cache
-        uses: actions/cache@v4
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: 💾 Cache Composer dependencies
+        uses: actions/cache@v5
         with:
-          path: ~/.composer/cache
-          key: composer-${{ hashFiles('**/composer.lock') }}
-          restore-keys: composer-
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
 
       - name: Setup COMPOSER_AUTH
         run: |
@@ -58,12 +57,9 @@ jobs:
         env:
           COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
 
-      - name: Upgrade Composer
-        run: composer self-update
-
       - name: 📦 Install Composer Dependencies
         run: |
-          composer install --no-interaction --no-progress --prefer-dist -o
+          composer install --no-interaction --no-progress --prefer-dist --optimize-autoloader
 
       - name: 🔍 Run PHP Linter (phpcs)
         run: php vendor/bin/phpcs
@@ -76,15 +72,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 🧾 Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🧪 Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20.13'
+          node-version: '20'
 
       - name: 💾 Restore NPM Cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.npm
           key: npm-${{ hashFiles('**/package-lock.json') }}
@@ -109,22 +105,14 @@ jobs:
 
     env:
       IMAGE_NAME: statamic-${{ inputs.site_name }}
-      GIT_USER_NAME: ${{ inputs.git_user_name }}
       DOCKER_IMAGE_TAG: ${{ github.ref == 'refs/heads/main' && 'production' || 'acceptance' }}
       DOCKER_DIRECTORY: ${{ github.ref == 'refs/heads/main'
         && format('{0}-website/{0}-prod', inputs.site_name)
-        || format('{0}-website/{0}-acc', inputs.site_name) }}
+        || format('{0}/{0}-acc', inputs.site_name) }}
 
     steps:
       - name: 🧾 Checkout Code
-        uses: actions/checkout@v4
-
-      - name: 🔧 Git SSH Config
-        run: |
-          git config --global user.name "$GIT_USER_NAME"
-          git config --global user.email "$GIT_USER_NAME@finetic.nl"
-          git config --global core.sshCommand "ssh -o StrictHostKeyChecking=accept-new"
-          git remote set-url origin ${{ inputs.git_repo_url }}
+        uses: actions/checkout@v6
 
       - name: ⚙️ Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -137,7 +125,7 @@ jobs:
           password: ${{ secrets.nexus_docker_password }}
 
       - name: 💾 Restore Docker Build Cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: /tmp/.buildx-cache
           key: buildx-${{ github.sha }}
