@@ -1,0 +1,45 @@
+name: "Statamic Frontend Test"
+description: "Install, lint, audit and build frontend"
+
+inputs:
+  node-version:
+    description: "Node.js version"
+    required: false
+    default: "20"
+
+  working-directory:
+    description: "Directory where package.json is located"
+    required: false
+    default: "."
+
+runs:
+  using: "composite"
+  steps:
+
+    - name: 🧾 Checkout Code
+      uses: actions/checkout@v6
+
+    - name: 🟢 Setup Node
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: 📦 Install frontend dependencies
+      run: npm ci --no-audit --no-fund --prefer-offline
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: 🔍 Lint
+      run: npm run lint
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: 🔐 Security audit
+      run: npm audit signatures
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: 🏗 Build
+      run: npm run build
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
