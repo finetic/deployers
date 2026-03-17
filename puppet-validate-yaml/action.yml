@@ -1,0 +1,46 @@
+name: YAML Validate
+
+runs:
+  using: "composite"
+
+  steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Download yamllint config
+      shell: bash
+      run: |
+        curl -sL https://raw.githubusercontent.com/finetic/deployers/main/.yamllint.yml -o .yamllint.yml
+
+    - name: Detect changed YAML files
+      id: detect
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        BASE_REF="${GITHUB_BASE_REF:-main}"
+
+        git fetch origin $BASE_REF --depth=1 || true
+
+        git diff --name-only origin/$BASE_REF...HEAD \
+          -- '*.yml' '*.yaml' \
+          | grep -E '^\.github/workflows/|^modules/|^manifests/' > changed-yaml.txt || true
+
+        COUNT=$(wc -l < changed-yaml.txt | tr -d ' ')
+        echo "changed_yaml_count=$COUNT" >> $GITHUB_OUTPUT
+
+    - name: Skip if no changes
+      if: steps.detect.outputs.changed_yaml_count == '0'
+      run: echo "No YAML changes"
+
+    - name: Install yamllint
+      if: steps.detect.outputs.changed_yaml_count != '0'
+      shell: bash
+      run: pip install yamllint
+
+    - name: Run yamllint
+      if: steps.detect.outputs.changed_yaml_count != '0'
+      shell: bash
+      run: |
+        xargs -a changed-yaml.txt yamllint -c .yamllint.yml

@@ -1,0 +1,48 @@
+name: Puppet Validate Syntax
+description: Validate changed Puppet .pp files
+
+runs:
+  using: "composite"
+
+  steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Detect changed .pp files
+      id: detect
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        BASE_REF="${GITHUB_BASE_REF:-main}"
+
+        git fetch origin "$BASE_REF" --depth=1 || true
+
+        git diff --name-only origin/$BASE_REF...HEAD -- '*.pp' \
+        | grep -v '/plans/' > changed-pp.txt || true
+
+        COUNT=$(wc -l < changed-pp.txt | tr -d ' ')
+        echo "changed_pp_count=$COUNT" >> $GITHUB_OUTPUT
+
+        echo "Changed Puppet files:"
+        cat changed-pp.txt || true
+
+    - name: Skip if no changes
+      if: steps.detect.outputs.changed_pp_count == '0'
+      run: echo "No Puppet changes"
+
+    - name: Validate Puppet files
+      if: steps.detect.outputs.changed_pp_count != '0'
+      shell: bash
+      run: |
+        docker pull puppet/puppet-dev-tools:latest
+
+        docker run --rm \
+          -v ${{ github.workspace }}:/mnt \
+          -w /mnt \
+          puppet/puppet-dev-tools:latest \
+          bash -c '
+            set -e
+            xargs -a changed-pp.txt -I {} puppet parser validate "{}"
+          '

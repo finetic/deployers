@@ -1,0 +1,62 @@
+name: Puppet Deploy
+
+inputs:
+  environment_target:
+    required: false
+    default: "/opt/docker/puppetserver/puppet/code/environments"
+
+  ssh_host:
+    required: true
+
+  ssh_user:
+    required: true
+
+  deploy_ssh_key:
+    required: true
+
+runs:
+  using: "composite"
+
+  steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 1
+
+    - name: Setup known_hosts
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p ~/.ssh
+        ssh-keyscan ${{ inputs.ssh_host }} >> ~/.ssh/known_hosts 2>/dev/null || true
+        sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
+
+    - name: Start SSH Agent
+      uses: webfactory/ssh-agent@v0.10.0
+      with:
+        ssh-private-key: ${{ inputs.deploy_ssh_key }}
+
+    - name: Determine environment
+      id: env
+      shell: bash
+      run: |
+        set -euo pipefail
+        case "${GITHUB_REF}" in
+          refs/heads/main) ENV=production ;;
+          refs/heads/develop) ENV=test ;;
+          *) ENV=dev ;;
+        esac
+        echo "env=$ENV" >> $GITHUB_OUTPUT
+
+    - name: Rsync manifests
+      shell: bash
+      run: |
+        set -euo pipefail
+        rsync -avz --delete -e "ssh -o StrictHostKeyChecking=yes" \
+        manifests/ ${{ inputs.ssh_user }}@${{ inputs.ssh_host }}:"${{ inputs.environment_target }}/${{ steps.env.outputs.env }}/manifests/"
+
+    - name: Rsync modules
+      shell: bash
+      run: |
+        set -euo pipefail
+        rsync -avz --delete -e "ssh -o StrictHostKeyChecking=yes" \
+        modules/ ${{ inputs.ssh_user }}@${{ inputs.ssh_host }}:"${{ inputs.environment_target }}/${{ steps.env.outputs.env }}/modules/"

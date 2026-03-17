@@ -1,0 +1,47 @@
+name: Puppet Lint
+
+runs:
+  using: "composite"
+
+  steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Detect changed .pp files
+      id: detect
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        BASE_REF="${GITHUB_BASE_REF:-main}"
+
+        git fetch origin "$BASE_REF" --depth=1 || true
+
+        git diff --name-only origin/$BASE_REF...HEAD -- '*.pp' \
+        | grep -v '/plans/' > changed-lint.txt || true
+
+        COUNT=$(wc -l < changed-lint.txt | tr -d ' ')
+        echo "changed_pp_count=$COUNT" >> $GITHUB_OUTPUT
+
+        echo "Changed Puppet files:"
+        cat changed-lint.txt || true
+
+    - name: Skip if no changes
+      if: steps.detect.outputs.changed_pp_count == '0'
+      run: echo "No Puppet lint changes"
+
+    - name: Lint Puppet files
+      if: steps.detect.outputs.changed_pp_count != '0'
+      shell: bash
+      run: |
+        docker pull puppet/puppet-dev-tools:latest
+
+        docker run --rm \
+          -v ${{ github.workspace }}:/mnt \
+          -w /mnt \
+          puppet/puppet-dev-tools:latest \
+          bash -c '
+            set -e
+            xargs -a changed-lint.txt -I {} puppet-lint "{}"
+          '
