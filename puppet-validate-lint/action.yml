@@ -29,6 +29,7 @@ runs:
 
     - name: Skip if no changes
       if: steps.detect.outputs.changed_pp_count == '0'
+      shell: bash
       run: echo "No Puppet lint changes"
 
     - name: Lint Puppet files
