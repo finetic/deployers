@@ -1,0 +1,113 @@
+name: "Statamic Deploy"
+description: "Deploy Statamic Docker container"
+
+inputs:
+  client_name:
+    description: "Client name"
+    required: true
+
+  site_name:
+    description: "Site name"
+    required: true
+
+  server:
+    description: "Target server"
+    required: true
+
+  ssh_user:
+    description: "SSH user"
+    required: false
+    default: deployment
+
+  ssh_key:
+    description: "SSH private key"
+    required: true
+
+  docker_directory_base:
+    description: "Base docker directory"
+    required: false
+    default: "/opt/docker"
+
+runs:
+  using: "composite"
+
+  steps:
+    - name: 🔐 Setup SSH
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+
+        echo "${{ inputs.ssh_key }}" > ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+
+        ssh-keyscan -H ${{ inputs.server }} >> ~/.ssh/known_hosts 2>/dev/null
+        sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
+
+    - name: 🏷 Determine environment
+      id: env
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+          ENV="prod"
+        else
+          ENV="acc"
+        fi
+
+        echo "env=$ENV" >> $GITHUB_OUTPUT
+
+    - name: 📁 Determine target path
+      id: path
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        CLIENT="${{ inputs.client_name }}"
+        SITE="${{ inputs.site_name }}"
+        BASE="${{ inputs.docker_directory_base }}"
+        ENV="${{ steps.env.outputs.env }}"
+        SERVER="${{ inputs.server }}"
+
+        case "$SERVER" in
+          statamic.finetic.dev)
+            TARGET="$BASE/${CLIENT}-website/${SITE}-${ENV}"
+            ;;
+          *)
+            TARGET="$BASE/${CLIENT}/${SITE}-${ENV}"
+            ;;
+        esac
+
+        echo "target=$TARGET" >> $GITHUB_OUTPUT
+        echo "Deploy target: $TARGET"
+
+    - name: 🚀 Deploy
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        TARGET_DIR="${{ steps.path.outputs.target }}"
+
+        ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+          ${{ inputs.ssh_user }}@${{ inputs.server }} << EOF
+
+          set -euo pipefail
+
+          if [ ! -d "$TARGET_DIR" ]; then
+            echo "❌ Directory not found: $TARGET_DIR"
+            exit 1
+          fi
+
+          cd "$TARGET_DIR"
+
+          echo "Pulling latest image..."
+          docker compose pull
+
+          echo "Restarting containers..."
+          docker compose up -d --no-deps --force-recreate
+
+          echo "Deploy completed"
+        EOF
