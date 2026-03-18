@@ -18,6 +18,8 @@ runs:
 
     - name: 🧾 Checkout Code
       uses: actions/checkout@v6
+      with:
+        fetch-depth: 1
 
     - name: 🟢 Setup Node
       uses: actions/setup-node@v6
@@ -25,21 +27,29 @@ runs:
         node-version: ${{ inputs.node-version }}
 
     - name: 📦 Install frontend dependencies
-      run: npm ci --no-audit --no-fund --prefer-offline
+      run: |
+        set -euo pipefail
+        npm ci --no-audit --no-fund --prefer-offline
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: 🔍 Lint
-      run: npm run lint
+      run: |
+        set -euo pipefail
+        npm run lint
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: 🔐 Security audit
-      run: npm audit signatures
+      run: |
+        set -euo pipefail
+        npm audit signatures
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: 🏗 Build
-      run: npm run build
+      run: |
+        set -euo pipefail
+        npm run build
       shell: bash
       working-directory: ${{ inputs.working-directory }}

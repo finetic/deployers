@@ -17,6 +17,8 @@ runs:
 
     - name: 🧾 Checkout Code
       uses: actions/checkout@v6
+      with:
+        fetch-depth: 1
 
     - name: 🧪 Setup PHP
       uses: shivammathur/setup-php@v2
@@ -27,28 +29,34 @@ runs:
     - name: Cache vendor
       uses: actions/cache@v4
       with:
-        path: vendor
-        key: ${{ runner.os }}-vendor-${{ hashFiles('**/composer.lock') }}
+        path: |
+          vendor
+          ~/.composer/cache
+        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-composer-
 
     - name: Setup COMPOSER_AUTH
       run: |
+        set -euo pipefail
         mkdir -p ~/.config/composer
-        echo '${{ inputs.composer-auth }}' > ~/.config/composer/auth.json
+        printf "%s" '${{ inputs.composer-auth }}' > ~/.config/composer/auth.json
       shell: bash
 
     - name: 📦 Install Composer Dependencies
       run: |
+        set -euo pipefail
         composer install \
           --no-interaction \
           --no-progress \
           --prefer-dist \
           --no-scripts \
-          --no-autoloader
-        composer dump-autoload --optimize --no-scripts
+          --optimize-autoloader
       shell: bash
 
     - name: Static Analysis
       run: |
+        set -euo pipefail
         php vendor/bin/phpcs &
         PHPCS_PID=$!
         php vendor/bin/phpstan &

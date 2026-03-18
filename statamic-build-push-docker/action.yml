@@ -1,0 +1,81 @@
+name: "Statamic Build & Push"
+description: "Build and push Docker image with registry cache"
+
+inputs:
+  site_name:
+    description: "Site name"
+    required: true
+  registry:
+    description: "Docker registry"
+    required: false
+    default: docker.finetic.dev
+  docker_username:
+    description: "Docker username"
+    required: true
+  docker_password:
+    description: "Docker password"
+    required: true
+  composer_auth:
+    description: "Composer auth.json content"
+    required: false
+
+runs:
+  using: "composite"
+
+  steps:
+    - name: 🧾 Checkout
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 1
+
+    - name: 🏷 Determine tag
+      id: tag
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+          TAG="production"
+        else
+          TAG="acceptance"
+        fi
+
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+    - name: ⚙️ Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+      with:
+        driver-opts: image=moby/buildkit:latest
+
+    - name: 🔐 Docker login
+      uses: docker/login-action@v4
+      with:
+        registry: ${{ inputs.registry }}
+        username: ${{ inputs.docker_username }}
+        password: ${{ inputs.docker_password }}
+
+    - name: 🏗 Build and push
+      uses: docker/build-push-action@v7
+      with:
+        context: ${{ github.workspace }}
+        file: ${{ github.workspace }}/docker/prod/Dockerfile
+
+        push: ${{ github.event_name != 'pull_request' }}
+        platforms: linux/amd64
+        pull: true
+        provenance: false
+        tags: |
+          ${{ inputs.registry }}/finetic/websites/statamic-${{ inputs.site_name }}:${{ steps.tag.outputs.tag }}
+          ${{ inputs.registry }}/finetic/websites/statamic-${{ inputs.site_name }}:${{ github.sha }}
+        labels: |
+          vendor=Finetic
+        build-args: |
+          GIT_REVISION=${{ github.sha }}
+        secrets: |
+          ${{ inputs.composer_auth != '' && format('composer_auth={0}', inputs.composer_auth) || '' }}
+        cache-from: |
+          type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:${{ github.ref_name }}-buildcache
+          type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:buildcache
+          type=registry,ref=${{ inputs.registry }}/finetic/websites/statamic-${{ inputs.site_name }}:${{ github.sha }}
+        cache-to: |
+          type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:${{ github.ref_name }}-buildcache,mode=max,compression=zstd,oci-mediatypes=true
