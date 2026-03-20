@@ -31,7 +31,7 @@ runs:
         sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
 
     - name: Start SSH Agent
-      uses: webfactory/ssh-agent@v0.10.0
+      uses: webfactory/ssh-agent@v0.9.1
       with:
         ssh-private-key: ${{ inputs.deploy_ssh_key }}
 
