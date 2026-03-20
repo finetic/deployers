@@ -56,6 +56,9 @@ runs:
 
     - name: 🏗 Build and push
       uses: docker/build-push-action@v7
+      env:
+        COMPOSER_AUTH: ${{ inputs.composer_auth }}
+
       with:
         context: ${{ github.workspace }}
         file: ${{ github.workspace }}/docker/prod/Dockerfile
@@ -72,7 +75,7 @@ runs:
         build-args: |
           GIT_REVISION=${{ github.sha }}
         secrets: |
-          ${{ inputs.composer_auth != '' && format('composer_auth={0}', inputs.composer_auth) || '' }}
+          ${{ inputs.composer_auth }}
         cache-from: |
           type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:${{ github.ref_name }}-buildcache
           type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:buildcache
