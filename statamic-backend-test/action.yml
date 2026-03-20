@@ -57,9 +57,10 @@ runs:
     - name: Static Analysis
       run: |
         set -euo pipefail
-        php vendor/bin/phpcs &
-        PHPCS_PID=$!
-        php vendor/bin/phpstan &
-        PHPSTAN_PID=$!
-        wait $PHPCS_PID $PHPSTAN_PID
+
+        echo "Running PHPCS..."
+        php vendor/bin/phpcs
+
+        echo "Running PHPStan..."
+        php vendor/bin/phpstan
       shell: bash
