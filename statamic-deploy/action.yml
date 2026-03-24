@@ -113,7 +113,7 @@ runs:
           docker compose up -d --no-deps --force-recreate
         
           # 🔥 Container naam bepalen
-          CONTAINER_NAME="${SITE}-${ENV}"
+          CONTAINER_NAME="${{ inputs.site_name }}-${{ steps.env.outputs.env }}"
     
           echo "🧹 Clear cache"
           docker exec \$CONTAINER_NAME php artisan cache:clear
