@@ -120,6 +120,9 @@ runs:
     
           echo "⚡ Refresh stache"
           docker exec \$CONTAINER_NAME php artisan statamic:stache:refresh
+        
+          echo "📄 Refresh static"
+          docker exec \$CONTAINER_NAME php artisan statamic:static:refresh 
 
           echo "Deploy completed"
         EOF
