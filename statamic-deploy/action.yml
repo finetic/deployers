@@ -122,7 +122,8 @@ runs:
           docker exec \$CONTAINER_NAME php artisan statamic:stache:refresh
         
           echo "📄 Refresh static"
-          docker exec \$CONTAINER_NAME php artisan statamic:static:refresh 
+          docker exec \$CONTAINER_NAME php artisan statamic:static:clear 
+          docker exec \$CONTAINER_NAME php artisan statamic:static:warm --uncached --queue 
 
           echo "Deploy completed"
         EOF
