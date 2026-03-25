@@ -75,7 +75,7 @@ runs:
         build-args: |
           GIT_REVISION=${{ github.sha }}
         secrets: |
-          ${{ inputs.composer_auth }}
+          composer_auth=${{ inputs.composer_auth }}
         cache-from: |
           type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:${{ github.ref_name }}-buildcache
           type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:buildcache
