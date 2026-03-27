@@ -67,18 +67,9 @@ runs:
         platforms: linux/amd64
         pull: true
         provenance: false
-        tags: |
-          ${{ inputs.registry }}/finetic/websites/statamic-${{ inputs.site_name }}:${{ steps.tag.outputs.tag }}
-          ${{ inputs.registry }}/finetic/websites/statamic-${{ inputs.site_name }}:${{ github.sha }}
-        labels: |
-          vendor=Finetic
-        build-args: |
-          GIT_REVISION=${{ github.sha }}
-        secrets: |
-          composer_auth=${{ inputs.composer_auth }}
-        cache-from: |
-          type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:${{ github.ref_name }}-buildcache
-          type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:buildcache
-          type=registry,ref=${{ inputs.registry }}/finetic/websites/statamic-${{ inputs.site_name }}:${{ github.sha }}
-        cache-to: |
-          type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:${{ github.ref_name }}-buildcache,mode=max,compression=zstd,oci-mediatypes=true
+        tags: ${{ inputs.registry }}/finetic/websites/statamic-${{ inputs.site_name }}:${{ steps.tag.outputs.tag }},${{ inputs.registry }}/finetic/websites/statamic-${{ inputs.site_name }}:${{ github.sha }}
+        labels: vendor=Finetic
+        build-args: GIT_REVISION=${{ github.sha }}
+        secrets: composer_auth=${{ inputs.composer_auth }}
+        cache-from: type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:${{ github.ref_name }}-buildcache,type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:buildcache,type=registry,ref=${{ inputs.registry }}/finetic/websites/statamic-${{ inputs.site_name }}:${{ github.sha }}
+        cache-to: type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:${{ github.ref_name }}-buildcache,mode=max,compression=zstd,oci-mediatypes=true
