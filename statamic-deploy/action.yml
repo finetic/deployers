@@ -110,7 +110,7 @@ runs:
           docker compose pull
 
           echo "Restarting containers..."
-          docker compose up -d --no-deps --force-recreate
+          docker compose up -d
         
           # 🔥 Container naam bepalen
           CONTAINER_NAME="${{ inputs.site_name }}-${{ steps.env.outputs.env }}"
