@@ -54,7 +54,7 @@ runs:
         username: ${{ inputs.docker_username }}
         password: ${{ inputs.docker_password }}
 
-    - name: 🏗 Build and push
+    - name: 🏗 Build and push prod
       uses: docker/build-push-action@v7
       env:
         COMPOSER_AUTH: ${{ inputs.composer_auth }}
@@ -62,14 +62,41 @@ runs:
       with:
         context: ${{ github.workspace }}
         file: ${{ github.workspace }}/docker/prod/Dockerfile
+        target: prod
 
         push: ${{ github.event_name != 'pull_request' }}
         platforms: linux/amd64
         pull: true
         provenance: false
+
         tags: ${{ inputs.registry }}/finetic/websites/statamic-${{ inputs.site_name }}:${{ steps.tag.outputs.tag }},${{ inputs.registry }}/finetic/websites/statamic-${{ inputs.site_name }}:${{ github.sha }}
         labels: vendor=Finetic
+
         build-args: GIT_REVISION=${{ github.sha }}
         secrets: composer_auth=${{ inputs.composer_auth }}
-        cache-from: type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:${{ github.ref_name }}-buildcache,type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:buildcache,type=registry,ref=${{ inputs.registry }}/finetic/websites/statamic-${{ inputs.site_name }}:${{ github.sha }}
-        cache-to: type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:${{ github.ref_name }}-buildcache,mode=max,compression=zstd,oci-mediatypes=true
+
+        cache-from: type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:buildcache
+        cache-to: type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:buildcache,mode=max,compression=zstd,oci-mediatypes=true
+
+#    - name: 🏗 Build and push scheduler
+#      uses: docker/build-push-action@v7
+#      env:
+#        COMPOSER_AUTH: ${{ inputs.composer_auth }}
+#      with:
+#        context: ${{ github.workspace }}
+#        file: ${{ github.workspace }}/docker/prod/Dockerfile
+#        target: scheduler
+#
+#        push: ${{ github.event_name != 'pull_request' }}
+#        platforms: linux/amd64
+#        pull: true
+#        provenance: false
+#
+#        tags: ${{ inputs.registry }}/finetic/websites/statamic-${{ inputs.site_name }}-scheduler:${{ steps.tag.outputs.tag }},${{ inputs.registry }}/finetic/websites/statamic-${{ inputs.site_name }}-scheduler:${{ github.sha }}
+#        labels: vendor=Finetic
+#
+#        build-args: GIT_REVISION=${{ github.sha }}
+#        secrets: composer_auth=${{ inputs.composer_auth }}
+#
+#        cache-from: type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:buildcache
+#        cache-to: type=registry,ref=${{ inputs.registry }}/finetic/cache/statamic-${{ inputs.site_name }}:buildcache,mode=max,compression=zstd,oci-mediatypes=true
