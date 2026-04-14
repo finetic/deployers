@@ -5,7 +5,7 @@ inputs:
   node-version:
     description: "Node.js version"
     required: false
-    default: "20"
+    default: "24"
 
   working-directory:
     description: "Directory where package.json is located"
@@ -25,11 +25,13 @@ runs:
       uses: actions/setup-node@v6
       with:
         node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+        cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
 
     - name: 📦 Install frontend dependencies
       run: |
         set -euo pipefail
-        npm ci --no-audit --no-fund --prefer-offline
+        npm ci --prefer-offline --no-audit --no-fund --loglevel=error
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
@@ -41,6 +43,7 @@ runs:
       working-directory: ${{ inputs.working-directory }}
 
     - name: 🔐 Security audit
+      if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
       run: |
         set -euo pipefail
         npm audit signatures
@@ -50,6 +53,8 @@ runs:
     - name: 🏗 Build
       run: |
         set -euo pipefail
+        export NODE_ENV=production
+        export CI=true
         npm run build
       shell: bash
       working-directory: ${{ inputs.working-directory }}
