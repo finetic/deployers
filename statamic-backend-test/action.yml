@@ -56,7 +56,9 @@ runs:
           --no-progress \
           --prefer-dist \
           --no-scripts \
-          --classmap-authoritative
+          --no-progress \
+          --optimize-autoloader \
+          --ansi
       shell: bash
 
     - name: Static Analysis
@@ -64,10 +66,8 @@ runs:
         set -euo pipefail
 
         echo "Running PHPCS..."
-        php -d memory_limit=-1 vendor/bin/phpcs &
+        vendor/bin/phpcs --parallel=4
 
         echo "Running PHPStan..."
-        php -d memory_limit=-1 vendor/bin/phpstan --no-progress &
-        
-        wait
+        vendor/bin/phpstan --no-progress --memory-limit=1G
       shell: bash
