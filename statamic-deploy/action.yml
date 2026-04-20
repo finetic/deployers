@@ -88,7 +88,7 @@ runs:
         echo "Deploy target: $TARGET"
 
     - name: 🔔 Notify start deploy
-      uses: finetic/deployers/actions/slack-notify@main
+      uses: finetic/deployers/slack-notify@main
       with:
         webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
         message: |
@@ -140,7 +140,7 @@ runs:
 
     - name: ✅ Notify success
       if: success()
-      uses: finetic/deployers/actions/slack-notify@main
+      uses: finetic/deployers/slack-notify@main
       with:
         webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
         message: |
@@ -151,7 +151,7 @@ runs:
 
     - name: ❌ Notify failure
       if: failure()
-      uses: finetic/deployers/actions/slack-notify@main
+      uses: finetic/deployers/slack-notify@main
       with:
         webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
         message: |
