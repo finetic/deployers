@@ -87,6 +87,16 @@ runs:
         echo "target=$TARGET" >> $GITHUB_OUTPUT
         echo "Deploy target: $TARGET"
 
+    - name: 🔔 Notify start deploy
+      uses: finetic/deployers/actions/slack-notify@main
+      with:
+        webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+        message: |
+          🚀 Deploy gestart
+          Project: ${{ env.SITE_NAME }}
+          Branch: ${{ github.ref_name }}
+          User: ${{ github.actor }}
+
     - name: 🚀 Deploy
       shell: bash
       run: |
@@ -127,3 +137,25 @@ runs:
 
           echo "Deploy completed"
         EOF
+
+    - name: ✅ Notify success
+      if: success()
+      uses: finetic/deployers/actions/slack-notify@main
+      with:
+        webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+        message: |
+          ✅ Deploy geslaagd
+          Project: ${{ env.SITE_NAME }}
+          Environment: ${{ github.ref_name }}
+          Server: ${{ steps.server.outputs.server }}
+
+    - name: ❌ Notify failure
+      if: failure()
+      uses: finetic/deployers/actions/slack-notify@main
+      with:
+        webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+        message: |
+          ❌ Deploy mislukt
+          Project: ${{ env.SITE_NAME }}
+          Branch: ${{ github.ref_name }}
+          Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
