@@ -28,6 +28,10 @@ inputs:
     required: false
     default: "/opt/docker"
 
+  slack_webhook_url:
+    description: "Slack webhook URL"
+    required: false
+
 runs:
   using: "composite"
 
@@ -90,7 +94,7 @@ runs:
     - name: 🔔 Notify start deploy
       uses: finetic/deployers/slack-notify@main
       with:
-        webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+        webhook_url: ${{ inputs.slack_webhook_url }}
         message: |
           🚀 Deploy gestart
           Project: ${{ env.SITE_NAME }}
@@ -142,7 +146,7 @@ runs:
       if: success()
       uses: finetic/deployers/slack-notify@main
       with:
-        webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+        webhook_url: ${{ inputs.slack_webhook_url }}
         message: |
           ✅ Deploy geslaagd
           Project: ${{ env.SITE_NAME }}
@@ -153,7 +157,7 @@ runs:
       if: failure()
       uses: finetic/deployers/slack-notify@main
       with:
-        webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+        webhook_url: ${{ inputs.slack_webhook_url }}
         message: |
           ❌ Deploy mislukt
           Project: ${{ env.SITE_NAME }}
