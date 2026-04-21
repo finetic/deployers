@@ -159,4 +159,4 @@ runs:
           ❌ Deploy mislukt
           Project: ${{ env.SITE_NAME }}
           Branch: ${{ github.ref_name }}
-          Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          Run: https://git.statamic.finetic.dev/${{ github.repository }}/actions/runs/${{ github.run_id }}
