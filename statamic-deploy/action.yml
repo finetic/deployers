@@ -78,7 +78,7 @@ runs:
 
         case "$SERVER" in
           statamic.finetic.dev)
-            TARGET="$BASE/${SITE}-website/${SITE}-${ENV}"
+            TARGET="$BASE/${CLIENT}-website/${SITE}-${ENV}"
             ;;
           *)
             TARGET="$BASE/${CLIENT}/${SITE}-${ENV}"
