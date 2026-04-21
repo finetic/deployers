@@ -76,14 +76,30 @@ runs:
         ENV="${{ steps.env.outputs.env }}"
         SERVER="${{ inputs.server }}"
 
-        case "$SERVER" in
-          statamic.finetic.dev)
-            TARGET="$BASE/${CLIENT}-website/${SITE}-${ENV}"
-            ;;
-          *)
-            TARGET="$BASE/${CLIENT}/${SITE}-${ENV}"
-            ;;
-        esac
+        NEW_PATH="$BASE/${CLIENT}/${SITE}-${ENV}"
+        OLD_PATH="$BASE/${CLIENT}-website/${SITE}-${ENV}"
+    
+        echo "Checking paths on $SERVER..."
+    
+        TARGET=$(ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+          ${{ inputs.ssh_user }}@$SERVER << EOF
+            if [ -d "$NEW_PATH" ]; then
+              echo "$NEW_PATH"
+            elif [ -d "$OLD_PATH" ]; then
+              echo "$OLD_PATH"
+            else
+              echo ""
+            fi
+        EOF
+        )
+    
+        if [ -z "$TARGET" ]; then
+          echo "❌ No valid deploy directory found"
+          echo "Checked:"
+          echo " - $NEW_PATH"
+          echo " - $OLD_PATH"
+          exit 1
+        fi
 
         echo "target=$TARGET" >> $GITHUB_OUTPUT
         echo "Deploy target: $TARGET"
