@@ -81,7 +81,7 @@ runs:
             TARGET="$BASE/${CLIENT}-website/${SITE}-${ENV}"
             ;;
           statamic-acc.finetic.dev)
-            TARGET="$BASE/${CLIENT}-website/${SITE}-${ENV}"
+            TARGET="$BASE/${CLIENT}/${SITE}-${ENV}"
             ;;
           *)
             TARGET="$BASE/${CLIENT}/${SITE}-${ENV}"
