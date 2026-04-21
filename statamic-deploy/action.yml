@@ -97,7 +97,7 @@ runs:
         webhook_url: ${{ inputs.slack_webhook_url }}
         message: |
           🚀 Deploy gestart
-          Project: ${{ env.SITE_NAME }}
+          Project: ${{ inputs.site_name }}
           Branch: ${{ github.ref_name }}
           User: ${{ github.actor }}
 
@@ -159,7 +159,7 @@ runs:
         webhook_url: ${{ inputs.slack_webhook_url }}
         message: |
           ✅ Deploy geslaagd
-          Project: ${{ env.SITE_NAME }}
+          Project: ${{ inputs.site_name }}
           Environment: ${{ github.ref_name }}
           Server: ${{ inputs.server }}
 
@@ -170,6 +170,6 @@ runs:
         webhook_url: ${{ inputs.slack_webhook_url }}
         message: |
           ❌ Deploy mislukt
-          Project: ${{ env.SITE_NAME }}
+          Project: ${{ inputs.site_name }}
           Branch: ${{ github.ref_name }}
           Run: https://git.statamic.finetic.dev/${{ github.repository }}/actions/runs/${{ github.run_id }}
