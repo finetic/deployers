@@ -105,31 +105,20 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        
+
         TARGET_DIR="${{ steps.path.outputs.target }}"
-        FALLBACK_DIR=$(echo "$TARGET_DIR" | sed 's/-website//')
-        
+
         ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
           ${{ inputs.ssh_user }}@${{ inputs.server }} << EOF
 
           set -euo pipefail
-          TARGET_DIR="$TARGET_DIR"
-          FALLBACK_DIR="$FALLBACK_DIR"
-  
-          if [ -d "\$TARGET_DIR" ]; then
-            echo "✅ Using primary path: \$TARGET_DIR"
-          elif [ -d "\$FALLBACK_DIR" ]; then
-            echo "⚠️ Using fallback path: \$FALLBACK_DIR"
-            TARGET_DIR="\$FALLBACK_DIR"
-          else
-            echo "❌ No valid directory found"
-            echo "Checked:"
-            echo " - \$TARGET_DIR"
-            echo " - \$FALLBACK_DIR"
+
+          if [ ! -d "$TARGET_DIR" ]; then
+            echo "❌ Directory not found: $TARGET_DIR"
             exit 1
           fi
 
-          cd "\$TARGET_DIR"
+          cd "$TARGET_DIR"
 
           echo "Pulling latest image..."
           docker compose pull
