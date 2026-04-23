@@ -132,7 +132,8 @@ runs:
           echo "🧹 Clear cache"
           docker exec \$CONTAINER_NAME php artisan cache:clear
         
-          echo "🧹 View Clear cache"
+          echo "🧹 Refresh View cache"
+          docker exec \$CONTAINER_NAME php artisan view:clear
           docker exec \$CONTAINER_NAME php artisan view:cache
     
           echo "⚡ Refresh stache"
@@ -140,7 +141,7 @@ runs:
         
           echo "📄 Refresh static"
           docker exec \$CONTAINER_NAME php artisan statamic:static:clear 
-          docker exec \$CONTAINER_NAME php artisan statamic:static:warm --uncached --queue 
+          docker exec \$CONTAINER_NAME php artisan statamic:static:warm --uncached --queue
 
           echo "Deploy completed"
         EOF
