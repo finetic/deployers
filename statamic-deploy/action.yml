@@ -131,6 +131,9 @@ runs:
     
           echo "🧹 Clear cache"
           docker exec \$CONTAINER_NAME php artisan cache:clear
+        
+          echo "🧹 View Clear cache"
+          docker exec \$CONTAINER_NAME php artisan view:cache
     
           echo "⚡ Refresh stache"
           docker exec \$CONTAINER_NAME php artisan statamic:stache:refresh
