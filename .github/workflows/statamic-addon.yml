@@ -95,8 +95,13 @@ jobs:
             exit 0
           fi
 
-          if [ ! -d tests ] && [ ! -f phpunit.xml ] && [ ! -f phpunit.xml.dist ]; then
-            echo "⚠️ Geen tests of phpunit.xml gevonden; PHPUnit overgeslagen."
+          if [ ! -d tests ]; then
+            echo "⚠️ Geen tests/ directory gevonden; PHPUnit overgeslagen."
+            exit 0
+          fi
+
+          if ! find tests -type f -name "*Test.php" | grep -q .; then
+            echo "⚠️ Geen testbestanden gevonden in tests/; PHPUnit overgeslagen."
             exit 0
           fi
 
