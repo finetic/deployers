@@ -90,8 +90,14 @@ jobs:
 
       - name: PHPUnit tests
         run: |
-          if [ -f vendor/bin/phpunit ]; then
-            vendor/bin/phpunit --testdox
-          else
+          if [ ! -f vendor/bin/phpunit ]; then
             echo "⚠️ PHPUnit niet geïnstalleerd; tests overgeslagen."
+            exit 0
           fi
+
+          if [ ! -d tests ] && [ ! -f phpunit.xml ] && [ ! -f phpunit.xml.dist ]; then
+            echo "⚠️ Geen tests of phpunit.xml gevonden; PHPUnit overgeslagen."
+            exit 0
+          fi
+
+          vendor/bin/phpunit --testdox
