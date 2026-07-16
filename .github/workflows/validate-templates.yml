@@ -6,9 +6,11 @@ on:
   push:
     paths:
       - '.github/workflows/**.yml'
+      - '.github/workflows/**.yaml'
   pull_request:
     paths:
       - '.github/workflows/**.yml'
+      - '.github/workflows/**.yaml'
 
 jobs:
   validate:
@@ -36,7 +38,23 @@ jobs:
         with:
           config_file: .yamllint.yml
 
-      - name: Require expected workflow names
+      - name: Require reusable workflow entrypoints
         run: |
-          ls .github/workflows | grep -qE 'puppet.yml|statamic.yml' || \
-          (echo '❌ Eén of meer verwachte workflows ontbreken' && exit 1)
+          required_workflows=(
+            ".github/workflows/dependencytrack-composer.yaml"
+            ".github/workflows/dependencytrack-maven.yaml"
+            ".github/workflows/dependencytrack-npm.yaml"
+            ".github/workflows/dependencytrack-python.yaml"
+            ".github/workflows/statamic-addon.yml"
+            ".github/workflows/versioning.yml"
+          )
+
+          missing=0
+          for workflow in "${required_workflows[@]}"; do
+            if [[ ! -f "$workflow" ]]; then
+              echo "Missing expected reusable workflow: $workflow"
+              missing=1
+            fi
+          done
+
+          exit "$missing"
