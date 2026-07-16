@@ -50,7 +50,7 @@ jobs:
           key: vendor-${{ runner.os }}-php-${{ matrix.php }}-${{ hashFiles('composer.json') }}
 
       - name: Install Composer dependencies
-        run: composer install --prefer-dist --no-interaction --no-progress --optimize-autoloader
+        run: composer install --prefer-dist --no-interaction --no-progress --no-scripts --optimize-autoloader
 
       - name: Lint PHP files
         run: |
