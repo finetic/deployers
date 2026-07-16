@@ -20,12 +20,12 @@ jobs:
 
     steps:
       - name: 🧾 Checkout Code (eerste poging)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         continue-on-error: true
 
       - name: 🔁 Retry Checkout (indien eerste faalt)
         if: failure()
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🛠️ Download yamllint config vanuit deployers
         run: |

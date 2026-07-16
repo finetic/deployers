@@ -1,3 +1,4 @@
+---
 name: Puppet Validate Syntax
 description: Validate changed Puppet .pp files
 

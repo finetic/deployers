@@ -1,3 +1,4 @@
+---
 name: "Statamic Frontend Test"
 description: "Install, lint, audit and build frontend"
 

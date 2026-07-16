@@ -1,3 +1,4 @@
+---
 name: "Statamic Backend Test"
 description: "Runs composer install + static analysis for Statamic projects"
 
