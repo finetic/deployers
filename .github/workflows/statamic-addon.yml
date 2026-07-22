@@ -3,6 +3,9 @@ name: Statamic Addon CI
 
 on:
   workflow_call:
+    secrets:
+      SLACK_WEBHOOK_URL_PULL_REQUESTS:
+        required: false
 
 concurrency:
   group: addon-ci-${{ github.ref }}
@@ -106,3 +109,27 @@ jobs:
           fi
 
           vendor/bin/phpunit --testdox
+
+  pr-ready:
+    name: PR Ready Notification
+    runs-on: ubuntu-latest
+    if: >
+      success() &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.base.ref != 'acceptance' &&
+      github.event.pull_request.base.ref != 'main' &&
+      !contains(github.event.pull_request.labels.*.name, 'release')
+    needs: [check]
+
+    steps:
+      - name: Notify PR ready
+        uses: finetic/deployers/slack-notify@main
+        with:
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_PULL_REQUESTS }}
+          message: |
+            👀 PR klaar voor review
+            Project: ${{ github.event.repository.name }}
+            PR: ${{ github.event.pull_request.title }}
+            Auteur: ${{ github.actor }}
+            Link: ${{ github.event.pull_request.html_url }}
