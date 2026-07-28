@@ -25,30 +25,30 @@ runs:
     - name: 🟢 Setup Node
       uses: actions/setup-node@v6
       with:
-        node-version: ${{ inputs.node-version }}
+        node-version: ${{ inputs['node-version'] }}
         cache: 'npm'
-        cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+        cache-dependency-path: ${{ inputs['working-directory'] }}/package-lock.json
 
     - name: 📦 Install frontend dependencies
       run: |
         set -euo pipefail
         npm ci --prefer-offline --no-audit --no-fund --loglevel=error
       shell: bash
-      working-directory: ${{ inputs.working-directory }}
+      working-directory: ${{ inputs['working-directory'] }}
 
     - name: 🔍 Lint
       run: |
         set -euo pipefail
         npm run lint
       shell: bash
-      working-directory: ${{ inputs.working-directory }}
+      working-directory: ${{ inputs['working-directory'] }}
 
     - name: 🔐 Security audit
       run: |
         set -euo pipefail
         npm audit signatures
       shell: bash
-      working-directory: ${{ inputs.working-directory }}
+      working-directory: ${{ inputs['working-directory'] }}
 
     - name: 🏗 Build
       run: |
@@ -57,4 +57,4 @@ runs:
         export CI=true
         npm run build
       shell: bash
-      working-directory: ${{ inputs.working-directory }}
+      working-directory: ${{ inputs['working-directory'] }}

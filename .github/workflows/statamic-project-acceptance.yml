@@ -1,0 +1,203 @@
+---
+name: Statamic project acceptance deployment
+
+on:
+  workflow_call:
+    inputs:
+      client_name:
+        description: Client name used in the deployment path
+        required: true
+        type: string
+      site_name:
+        description: Site name used for the Docker image and deployment
+        required: true
+        type: string
+      registry:
+        description: Docker registry
+        required: false
+        default: docker.finetic.dev
+        type: string
+      php_version:
+        description: PHP version used by the backend checks
+        required: false
+        default: "8.5"
+        type: string
+      node_version:
+        description: Node.js version used by the frontend checks
+        required: false
+        default: "24"
+        type: string
+      frontend_working_directory:
+        description: Directory containing package.json
+        required: false
+        default: "."
+        type: string
+      run_backend_checks:
+        description: Run backend checks
+        required: false
+        default: true
+        type: boolean
+      run_frontend_checks:
+        description: Run frontend checks
+        required: false
+        default: true
+        type: boolean
+    secrets:
+      composer_auth:
+        description: Composer auth.json content
+        required: true
+      nexus_docker_username:
+        description: Docker registry username
+        required: true
+      nexus_docker_password:
+        description: Docker registry password
+        required: true
+      deployment_private_ssh_key:
+        description: Private SSH key used for deployment
+        required: true
+      slack_webhook_url:
+        description: Slack webhook URL for deployment notifications
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  notify-started:
+    name: Notify deployment started
+    runs-on: ubuntu-latest
+    environment: acceptance
+    steps:
+      - name: Send Slack notification
+        continue-on-error: true
+        uses: finetic/deployers/slack-notify@main
+        with:
+          webhook_url: ${{ secrets.slack_webhook_url }}
+          message: |
+            🚀 Deploy gestart
+            Project: ${{ inputs.site_name }}
+            Environment: acc
+            User: ${{ github.actor }}
+
+  backend:
+    name: Test backend
+    needs: notify-started
+    if: inputs.run_backend_checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run backend checks
+        uses: finetic/deployers/statamic-backend-test@main
+        with:
+          php-version: ${{ inputs.php_version }}
+          composer-auth: ${{ secrets.composer_auth }}
+
+  frontend:
+    name: Test frontend
+    needs: notify-started
+    if: inputs.run_frontend_checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run frontend checks
+        uses: finetic/deployers/statamic-frontend-test@main
+        with:
+          node-version: ${{ inputs.node_version }}
+          working-directory: ${{ inputs.frontend_working_directory }}
+
+  validate:
+    name: Validate deployment configuration
+    needs:
+      - backend
+      - frontend
+    if: >-
+      always() &&
+      needs.backend.result != 'failure' &&
+      needs.backend.result != 'cancelled' &&
+      needs.frontend.result != 'failure' &&
+      needs.frontend.result != 'cancelled'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required secrets
+        shell: bash
+        env:
+          COMPOSER_AUTH: ${{ secrets.composer_auth }}
+          DOCKER_USERNAME: ${{ secrets.nexus_docker_username }}
+          DOCKER_PASSWORD: ${{ secrets.nexus_docker_password }}
+          SSH_KEY: ${{ secrets.deployment_private_ssh_key }}
+        run: |
+          set -euo pipefail
+
+          for name in COMPOSER_AUTH DOCKER_USERNAME DOCKER_PASSWORD SSH_KEY; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::${name} is required for an acceptance deployment"
+              exit 1
+            fi
+          done
+
+  build:
+    name: Build and push acceptance image
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build and push
+        uses: finetic/deployers/statamic-build-push-docker@main
+        with:
+          site_name: ${{ inputs.site_name }}
+          registry: ${{ inputs.registry }}
+          docker_username: ${{ secrets.nexus_docker_username }}
+          docker_password: ${{ secrets.nexus_docker_password }}
+          composer_auth: ${{ secrets.composer_auth }}
+          image_tag: acceptance
+
+  deploy:
+    name: Deploy acceptance
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy
+        uses: finetic/deployers/statamic-deploy@main
+        with:
+          client_name: ${{ inputs.client_name }}
+          site_name: ${{ inputs.site_name }}
+          server: statamic-acc.finetic.dev
+          environment: acc
+          ssh_key: ${{ secrets.deployment_private_ssh_key }}
+
+  notify-completed:
+    name: Notify deployment completed
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack notification
+        continue-on-error: true
+        uses: finetic/deployers/slack-notify@main
+        with:
+          webhook_url: ${{ secrets.slack_webhook_url }}
+          message: |
+            ✅ Deploy geslaagd
+            Project: ${{ inputs.site_name }}
+            Environment: acc
+            Server: statamic-acc.finetic.dev
+
+  notify-failed:
+    name: Notify deployment failed
+    needs:
+      - backend
+      - frontend
+      - validate
+      - build
+      - deploy
+    if: >-
+      always() &&
+      contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack notification
+        continue-on-error: true
+        uses: finetic/deployers/slack-notify@main
+        with:
+          webhook_url: ${{ secrets.slack_webhook_url }}
+          message: |
+            ❌ Deploy mislukt
+            Project: ${{ inputs.site_name }}
+            Environment: acc
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

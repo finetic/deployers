@@ -1,0 +1,106 @@
+---
+name: Statamic project pull request
+
+on:
+  workflow_call:
+    inputs:
+      client_name:
+        description: Client name used in notifications
+        required: true
+        type: string
+      site_name:
+        description: Site name used in notifications
+        required: true
+        type: string
+      php_version:
+        description: PHP version used by the backend checks
+        required: false
+        default: "8.4"
+        type: string
+      node_version:
+        description: Node.js version used by the frontend checks
+        required: false
+        default: "24"
+        type: string
+      frontend_working_directory:
+        description: Directory containing package.json
+        required: false
+        default: "."
+        type: string
+      run_backend_checks:
+        description: Run backend checks
+        required: false
+        default: true
+        type: boolean
+      run_frontend_checks:
+        description: Run frontend checks
+        required: false
+        default: true
+        type: boolean
+      notify_pr_ready:
+        description: Send the PR-ready notification
+        required: false
+        default: true
+        type: boolean
+    secrets:
+      composer_auth:
+        description: Composer auth.json content
+        required: true
+      slack_webhook_url_pull_requests:
+        description: Slack webhook URL for pull request notifications
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Test backend
+    if: inputs.run_backend_checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run backend checks
+        uses: finetic/deployers/statamic-backend-test@main
+        with:
+          php-version: ${{ inputs.php_version }}
+          composer-auth: ${{ secrets.composer_auth }}
+
+  frontend:
+    name: Test frontend
+    if: inputs.run_frontend_checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run frontend checks
+        uses: finetic/deployers/statamic-frontend-test@main
+        with:
+          node-version: ${{ inputs.node_version }}
+          working-directory: ${{ inputs.frontend_working_directory }}
+
+  notify:
+    name: Notify pull request ready
+    needs:
+      - backend
+      - frontend
+    if: >-
+      always() &&
+      inputs.notify_pr_ready &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.draft == false &&
+      !contains(github.event.pull_request.labels.*.name, 'release') &&
+      needs.backend.result != 'failure' &&
+      needs.backend.result != 'cancelled' &&
+      needs.frontend.result != 'failure' &&
+      needs.frontend.result != 'cancelled'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack notification
+        uses: finetic/deployers/slack-notify@main
+        with:
+          webhook_url: ${{ secrets.slack_webhook_url_pull_requests }}
+          message: |
+            👀 PR klaar voor review
+            Klant: ${{ inputs.client_name }}
+            Project: ${{ inputs.site_name }}
+            PR: ${{ github.event.pull_request.title }}
+            Auteur: ${{ github.actor }}
+            Link: ${{ github.event.pull_request.html_url }}

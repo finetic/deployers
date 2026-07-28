@@ -6,7 +6,7 @@ inputs:
   php-version:
     description: "PHP version"
     required: false
-    default: "8.5"
+    default: "8.4"
 
   composer-auth:
     description: "Composer auth.json content"
@@ -24,7 +24,7 @@ runs:
     - name: 🧪 Setup PHP
       uses: shivammathur/setup-php@v2
       with:
-        php-version: ${{ inputs.php-version }}
+        php-version: ${{ inputs['php-version'] }}
         extensions: mbstring, xml, ctype
         ini-values: |
           memory_limit=-1
@@ -42,7 +42,7 @@ runs:
       run: |
         set -euo pipefail
         mkdir -p ~/.config/composer
-        printf "%s" '${{ inputs.composer-auth }}' > ~/.config/composer/auth.json
+        printf "%s" '${{ inputs['composer-auth'] }}' > ~/.config/composer/auth.json
       shell: bash
 
     - name: 📦 Install Composer Dependencies

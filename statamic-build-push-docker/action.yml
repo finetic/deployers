@@ -60,7 +60,7 @@ runs:
         pull: true
         provenance: false
 
-        tags: | 
+        tags: |
           ${{ inputs.registry }}/finetic/websites/statamic-${{ inputs.site_name }}:${{ inputs.image_tag }}
           ${{ inputs.registry }}/finetic/websites/statamic-${{ inputs.site_name }}:${{ github.sha }}
         labels: vendor=Finetic
