@@ -15,7 +15,7 @@ on:
       php_version:
         description: PHP version used by the backend checks
         required: false
-        default: "8.4"
+        default: "8.5"
         type: string
       node_version:
         description: Node.js version used by the frontend checks
