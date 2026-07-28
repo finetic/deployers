@@ -1,0 +1,194 @@
+---
+name: "Statamic Project CI/CD"
+description: "Test, build, version, release and deploy a Statamic project"
+
+inputs:
+  client_name:
+    description: "Client name used in the deployment path"
+    required: true
+  site_name:
+    description: "Site name used for the Docker image and deployment"
+    required: true
+  registry:
+    description: "Docker registry"
+    required: false
+    default: docker.finetic.dev
+  php_version:
+    description: "PHP version used by the backend checks"
+    required: false
+    default: "8.5"
+  node_version:
+    description: "Node.js version used by the frontend checks"
+    required: false
+    default: "24"
+  frontend_working_directory:
+    description: "Directory containing package.json"
+    required: false
+    default: "."
+  run_backend_checks:
+    description: "Run backend checks"
+    required: false
+    default: "true"
+  run_frontend_checks:
+    description: "Run frontend checks"
+    required: false
+    default: "true"
+  deployment_environment:
+    description: "Deployment path/container suffix, for example acc or prod; empty skips deployment"
+    required: false
+    default: ""
+  deployment_server:
+    description: "Target server; required when deployment_environment is set"
+    required: false
+    default: ""
+  image_tag:
+    description: "Docker environment tag; required when deployment_environment is set"
+    required: false
+    default: ""
+  create_release:
+    description: "Create a VERSION-based tag and GitHub release"
+    required: false
+    default: "false"
+  notify_pr_ready:
+    description: "Send the PR-ready notification; disable for promotion PRs"
+    required: false
+    default: "true"
+  composer_auth:
+    description: "Composer auth.json content"
+    required: true
+  nexus_docker_username:
+    description: "Docker registry username"
+    required: false
+  nexus_docker_password:
+    description: "Docker registry password"
+    required: false
+  deployment_private_ssh_key:
+    description: "Private SSH key used for deployment"
+    required: false
+  slack_webhook_url:
+    description: "Slack webhook URL for deployment notifications"
+    required: false
+  slack_webhook_url_pull_requests:
+    description: "Slack webhook URL for pull request notifications"
+    required: false
+
+runs:
+  using: "composite"
+  steps:
+    - name: Notify deploy started
+      if: inputs.deployment_environment != ''
+      continue-on-error: true
+      uses: finetic/deployers/slack-notify@main
+      with:
+        webhook_url: ${{ inputs.slack_webhook_url }}
+        message: |
+          🚀 Deploy gestart
+          Project: ${{ inputs.site_name }}
+          Environment: ${{ inputs.deployment_environment }}
+          User: ${{ github.actor }}
+
+    - name: Test Backend
+      if: inputs.run_backend_checks == 'true'
+      uses: finetic/deployers/statamic-backend-test@main
+      with:
+        php-version: ${{ inputs.php_version }}
+        composer-auth: ${{ inputs.composer_auth }}
+
+    - name: Test Frontend
+      if: inputs.run_frontend_checks == 'true'
+      uses: finetic/deployers/statamic-frontend-test@main
+      with:
+        node-version: ${{ inputs.node_version }}
+        working-directory: ${{ inputs.frontend_working_directory }}
+
+    - name: Notify PR ready
+      if: >
+        github.event_name == 'pull_request' &&
+        inputs.notify_pr_ready == 'true' &&
+        github.event.pull_request.draft == false &&
+        !contains(github.event.pull_request.labels.*.name, 'release')
+      uses: finetic/deployers/slack-notify@main
+      with:
+        webhook_url: ${{ inputs.slack_webhook_url_pull_requests }}
+        message: |
+          👀 PR klaar voor review
+          Project: ${{ inputs.site_name }}
+          PR: ${{ github.event.pull_request.title }}
+          Auteur: ${{ github.actor }}
+          Link: ${{ github.event.pull_request.html_url }}
+
+    - name: Validate deployment configuration
+      if: inputs.deployment_environment != ''
+      shell: bash
+      env:
+        DEPLOYMENT_SERVER: ${{ inputs.deployment_server }}
+        IMAGE_TAG: ${{ inputs.image_tag }}
+        DOCKER_USERNAME: ${{ inputs.nexus_docker_username }}
+        DOCKER_PASSWORD: ${{ inputs.nexus_docker_password }}
+        SSH_KEY: ${{ inputs.deployment_private_ssh_key }}
+      run: |
+        set -euo pipefail
+
+        for name in DEPLOYMENT_SERVER IMAGE_TAG DOCKER_USERNAME DOCKER_PASSWORD SSH_KEY; do
+          if [[ -z "${!name}" ]]; then
+            echo "::error::${name} is required for a deployment"
+            exit 1
+          fi
+        done
+
+    - name: Build and push
+      if: inputs.deployment_environment != ''
+      uses: finetic/deployers/statamic-build-push-docker@main
+      with:
+        site_name: ${{ inputs.site_name }}
+        registry: ${{ inputs.registry }}
+        docker_username: ${{ inputs.nexus_docker_username }}
+        docker_password: ${{ inputs.nexus_docker_password }}
+        composer_auth: ${{ inputs.composer_auth }}
+        image_tag: ${{ inputs.image_tag }}
+
+    - name: Version and release
+      if: inputs.create_release == 'true'
+      uses: finetic/deployers/versioning@main
+      with:
+        github_token: ${{ github.token }}
+        git_username: ${{ vars.GIT_USERNAME || 'github-actions[bot]' }}
+        git_email: ${{ vars.GIT_EMAIL || '41898282+github-actions[bot]@users.noreply.github.com' }}
+
+    - name: Deploy
+      if: inputs.deployment_environment != ''
+      uses: finetic/deployers/statamic-deploy@main
+      with:
+        client_name: ${{ inputs.client_name }}
+        site_name: ${{ inputs.site_name }}
+        server: ${{ inputs.deployment_server }}
+        environment: ${{ inputs.deployment_environment }}
+        ssh_key: ${{ inputs.deployment_private_ssh_key }}
+
+    - name: Notify deploy completed
+      if: >
+        success() &&
+        inputs.deployment_environment != ''
+      continue-on-error: true
+      uses: finetic/deployers/slack-notify@main
+      with:
+        webhook_url: ${{ inputs.slack_webhook_url }}
+        message: |
+          ✅ Deploy geslaagd
+          Project: ${{ inputs.site_name }}
+          Environment: ${{ inputs.deployment_environment }}
+          Server: ${{ inputs.deployment_server }}
+
+    - name: Notify deploy failed
+      if: >
+        failure() &&
+        inputs.deployment_environment != ''
+      continue-on-error: true
+      uses: finetic/deployers/slack-notify@main
+      with:
+        webhook_url: ${{ inputs.slack_webhook_url }}
+        message: |
+          ❌ Deploy mislukt
+          Project: ${{ inputs.site_name }}
+          Environment: ${{ inputs.deployment_environment }}
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

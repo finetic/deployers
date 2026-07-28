@@ -4,7 +4,7 @@ name: "Slack Notify"
 description: "Send message to Slack"
 inputs:
   webhook_url:
-    required: true
+    required: false
   message:
     required: true
 
@@ -12,8 +12,17 @@ runs:
   using: "composite"
   steps:
     - name: Send Slack message
+      if: inputs.webhook_url != ''
       shell: bash
+      env:
+        WEBHOOK_URL: ${{ inputs.webhook_url }}
+        MESSAGE: ${{ inputs.message }}
       run: |
-        curl -X POST -H 'Content-type: application/json' \
-        --data "{\"text\": \"${{ inputs.message }}\"}" \
-        ${{ inputs.webhook_url }}
+        set -euo pipefail
+
+        jq -n --arg text "$MESSAGE" '{text: $text}' \
+          | curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H 'Content-type: application/json' \
+            --data-binary @- \
+            "$WEBHOOK_URL"

@@ -7,10 +7,12 @@ on:
     paths:
       - '.github/workflows/**.yml'
       - '.github/workflows/**.yaml'
+      - 'versioning/action.yml'
   pull_request:
     paths:
       - '.github/workflows/**.yml'
       - '.github/workflows/**.yaml'
+      - 'versioning/action.yml'
 
 jobs:
   validate:
@@ -22,12 +24,12 @@ jobs:
 
     steps:
       - name: 🧾 Checkout Code (eerste poging)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         continue-on-error: true
 
       - name: 🔁 Retry Checkout (indien eerste faalt)
         if: failure()
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: 🛠️ Download yamllint config vanuit deployers
         run: |
@@ -46,13 +48,28 @@ jobs:
             ".github/workflows/dependencytrack-npm.yaml"
             ".github/workflows/dependencytrack-python.yaml"
             ".github/workflows/statamic-addon.yml"
-            ".github/workflows/versioning.yml"
           )
 
           missing=0
           for workflow in "${required_workflows[@]}"; do
             if [[ ! -f "$workflow" ]]; then
               echo "Missing expected reusable workflow: $workflow"
+              missing=1
+            fi
+          done
+
+          exit "$missing"
+
+      - name: Require composite action entrypoints
+        run: |
+          required_actions=(
+            "versioning/action.yml"
+          )
+
+          missing=0
+          for action in "${required_actions[@]}"; do
+            if [[ ! -f "$action" ]]; then
+              echo "Missing expected composite action: $action"
               missing=1
             fi
           done

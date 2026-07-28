@@ -18,7 +18,7 @@ runs:
   steps:
 
     - name: 🧾 Checkout Code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         fetch-depth: 1
 
@@ -44,7 +44,6 @@ runs:
       working-directory: ${{ inputs.working-directory }}
 
     - name: 🔐 Security audit
-      if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
       run: |
         set -euo pipefail
         npm audit signatures

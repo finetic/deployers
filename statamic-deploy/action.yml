@@ -15,6 +15,10 @@ inputs:
     description: "Target server"
     required: true
 
+  environment:
+    description: "Deployment environment identifier used in paths and container names"
+    required: true
+
   ssh_user:
     description: "SSH user"
     required: false
@@ -28,10 +32,6 @@ inputs:
     description: "Base docker directory"
     required: false
     default: "/opt/docker"
-
-  slack_webhook_url:
-    description: "Slack webhook URL"
-    required: false
 
 runs:
   using: "composite"
@@ -51,20 +51,6 @@ runs:
         ssh-keyscan -H ${{ inputs.server }} >> ~/.ssh/known_hosts 2>/dev/null
         sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
 
-    - name: 🏷 Determine environment
-      id: env
-      shell: bash
-      run: |
-        set -euo pipefail
-
-        if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
-          ENV="prod"
-        else
-          ENV="acc"
-        fi
-
-        echo "env=$ENV" >> $GITHUB_OUTPUT
-
     - name: 📁 Determine target path
       id: path
       shell: bash
@@ -74,7 +60,7 @@ runs:
         CLIENT="${{ inputs.client_name }}"
         SITE="${{ inputs.site_name }}"
         BASE="${{ inputs.docker_directory_base }}"
-        ENV="${{ steps.env.outputs.env }}"
+        ENV="${{ inputs.environment }}"
         SERVER="${{ inputs.server }}"
 
         case "$SERVER" in
@@ -91,16 +77,6 @@ runs:
 
         echo "target=$TARGET" >> $GITHUB_OUTPUT
         echo "Deploy target: $TARGET"
-
-    - name: 🔔 Notify start deploy
-      uses: finetic/deployers/slack-notify@main
-      with:
-        webhook_url: ${{ inputs.slack_webhook_url }}
-        message: |
-          🚀 Deploy gestart
-          Project: ${{ inputs.site_name }}
-          Branch: ${{ github.ref_name }}
-          User: ${{ github.actor }}
 
     - name: 🚀 Deploy
       shell: bash
@@ -128,7 +104,7 @@ runs:
           docker compose up -d --no-deps --force-recreate
 
           # 🔥 Container naam bepalen
-          CONTAINER_NAME="${{ inputs.site_name }}-${{ steps.env.outputs.env }}"
+          CONTAINER_NAME="${{ inputs.site_name }}-${{ inputs.environment }}"
 
           echo "🧹 Clear cache"
           docker exec \$CONTAINER_NAME php artisan cache:clear
@@ -150,25 +126,3 @@ runs:
 
           echo "Deploy completed"
         EOF
-
-    - name: ✅ Notify success
-      if: success()
-      uses: finetic/deployers/slack-notify@main
-      with:
-        webhook_url: ${{ inputs.slack_webhook_url }}
-        message: |
-          ✅ Deploy geslaagd
-          Project: ${{ inputs.site_name }}
-          Environment: ${{ github.ref_name }}
-          Server: ${{ inputs.server }}
-
-    - name: ❌ Notify failure
-      if: failure()
-      uses: finetic/deployers/slack-notify@main
-      with:
-        webhook_url: ${{ inputs.slack_webhook_url }}
-        message: |
-          ❌ Deploy mislukt
-          Project: ${{ inputs.site_name }}
-          Branch: ${{ github.ref_name }}
-          Run: https://git.statamic.finetic.dev/${{ github.repository }}/actions/runs/${{ github.run_id }}

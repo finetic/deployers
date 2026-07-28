@@ -9,6 +9,13 @@ on:
 
 jobs:
   versioning:
-    uses: finetic/deployers/.github/workflows/versioning.yml@main
+    runs-on: ubuntu-latest
     permissions:
       contents: write
+    steps:
+      - name: Create version tag and release
+        uses: finetic/deployers/versioning@main
+        with:
+          github_token: ${{ github.token }}
+          git_username: ${{ vars.GIT_USERNAME }}
+          git_email: ${{ vars.GIT_EMAIL }}
