@@ -45,10 +45,6 @@ inputs:
     description: "Docker environment tag; required when deployment_environment is set"
     required: false
     default: ""
-  create_release:
-    description: "Create a VERSION-based tag and GitHub release"
-    required: false
-    default: "false"
   notify_pr_ready:
     description: "Send the PR-ready notification; disable for promotion PRs"
     required: false
@@ -146,14 +142,6 @@ runs:
         docker_password: ${{ inputs.nexus_docker_password }}
         composer_auth: ${{ inputs.composer_auth }}
         image_tag: ${{ inputs.image_tag }}
-
-    - name: Version and release
-      if: inputs.create_release == 'true'
-      uses: finetic/deployers/versioning@main
-      with:
-        github_token: ${{ github.token }}
-        git_username: ${{ vars.GIT_USERNAME || 'github-actions[bot]' }}
-        git_email: ${{ vars.GIT_EMAIL || '41898282+github-actions[bot]@users.noreply.github.com' }}
 
     - name: Deploy
       if: inputs.deployment_environment != ''

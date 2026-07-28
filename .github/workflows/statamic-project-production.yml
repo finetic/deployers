@@ -151,16 +151,9 @@ jobs:
   release:
     name: Version and release
     needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Create version and GitHub release
-        uses: finetic/deployers/versioning@main
-        with:
-          github_token: ${{ github.token }}
-          git_username: ${{ vars.GIT_USERNAME || 'github-actions[bot]' }}
-          git_email: >-
-            ${{ vars.GIT_EMAIL ||
-            '41898282+github-actions[bot]@users.noreply.github.com' }}
+    uses: https://github.com/finetic/deployers/.github/workflows/versioning.yml@main
+    permissions:
+      contents: write
 
   deploy:
     name: Deploy production
@@ -178,7 +171,16 @@ jobs:
 
   notify-completed:
     name: Notify deployment completed
-    needs: deploy
+    needs:
+      - backend
+      - frontend
+      - validate
+      - build
+      - release
+      - deploy
+    if: >-
+      always() &&
+      needs.deploy.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Send Slack notification
@@ -203,7 +205,20 @@ jobs:
       - deploy
     if: >-
       always() &&
-      contains(needs.*.result, 'failure')
+      (
+        needs.backend.result == 'failure' ||
+        needs.backend.result == 'cancelled' ||
+        needs.frontend.result == 'failure' ||
+        needs.frontend.result == 'cancelled' ||
+        needs.validate.result == 'failure' ||
+        needs.validate.result == 'cancelled' ||
+        needs.build.result == 'failure' ||
+        needs.build.result == 'cancelled' ||
+        needs.release.result == 'failure' ||
+        needs.release.result == 'cancelled' ||
+        needs.deploy.result == 'failure' ||
+        needs.deploy.result == 'cancelled'
+      )
     runs-on: ubuntu-latest
     steps:
       - name: Send Slack notification
