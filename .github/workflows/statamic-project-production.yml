@@ -177,17 +177,7 @@ jobs:
 
   notify-completed:
     name: Notify deployment completed
-    needs:
-      - backend
-      - frontend
-      - validate
-      - build
-      - deploy
-      - release
-    if: >-
-      always() &&
-      needs.deploy.result == 'success' &&
-      needs.release.result == 'success'
+    needs: deploy
     runs-on: ubuntu-latest
     environment: production
     steps:
