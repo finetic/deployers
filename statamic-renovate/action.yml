@@ -39,6 +39,10 @@ inputs:
   nexus_docker_password:
     description: "Nexus Docker password"
     required: false
+  nexus_docker_registry:
+    description: "Nexus Docker registry host"
+    required: false
+    default: "docker.finetic.dev"
 
 runs:
   using: "composite"
@@ -70,6 +74,60 @@ runs:
         echo "endpoint=${endpoint}" >> "${GITHUB_OUTPUT}"
         echo "repository=${repository}" >> "${GITHUB_OUTPUT}"
 
+    - name: Configure package registry access
+      id: registry_access
+      shell: bash
+      env:
+        INPUT_COMPOSER_AUTH: ${{ inputs.composer_auth }}
+        INPUT_NEXUS_DOCKER_REGISTRY: ${{ inputs.nexus_docker_registry }}
+        INPUT_NEXUS_DOCKER_USERNAME: ${{ inputs.nexus_docker_username }}
+        INPUT_NEXUS_DOCKER_PASSWORD: ${{ inputs.nexus_docker_password }}
+      run: |
+        set -euo pipefail
+
+        composer_rules='[]'
+
+        if [[ -n "${INPUT_COMPOSER_AUTH}" ]]; then
+          composer_rules="$(
+            jq -ce '
+              [
+                (."http-basic" // {} | to_entries[]? | {
+                  hostType: "packagist",
+                  matchHost: .key,
+                  username: .value.username,
+                  password: .value.password
+                }),
+                (.bearer // {} | to_entries[]? | {
+                  hostType: "packagist",
+                  matchHost: .key,
+                  token: .value
+                })
+              ]
+            ' <<< "${INPUT_COMPOSER_AUTH}"
+          )"
+        fi
+
+        host_rules="$(
+          jq -cn \
+            --argjson composer_rules "${composer_rules}" \
+            --arg registry "${INPUT_NEXUS_DOCKER_REGISTRY}" \
+            --arg username "${INPUT_NEXUS_DOCKER_USERNAME}" \
+            --arg password "${INPUT_NEXUS_DOCKER_PASSWORD}" \
+            '$composer_rules +
+              if $registry != "" and $username != "" and $password != "" then
+                [{
+                  hostType: "docker",
+                  matchHost: $registry,
+                  username: $username,
+                  password: $password
+                }]
+              else
+                []
+              end'
+        )"
+
+        echo "host_rules=${host_rules}" >> "${GITHUB_OUTPUT}"
+
     - name: Run Renovate
       uses: docker://renovate/renovate:43
       with:
@@ -85,3 +143,4 @@ runs:
         COMPOSER_AUTH: ${{ inputs.composer_auth }}
         NEXUS_DOCKER_USERNAME: ${{ inputs.nexus_docker_username }}
         NEXUS_DOCKER_PASSWORD: ${{ inputs.nexus_docker_password }}
+        RENOVATE_HOST_RULES: ${{ steps.registry_access.outputs.host_rules }}
