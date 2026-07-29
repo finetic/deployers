@@ -165,7 +165,7 @@ jobs:
         with:
           client_name: ${{ inputs.client_name }}
           site_name: ${{ inputs.site_name }}
-          server: statamic.finetic.dev
+          server: statamic-prod.finetic.dev
           environment: prod
           ssh_key: ${{ secrets.deployment_private_ssh_key }}
 
