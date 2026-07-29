@@ -30,6 +30,15 @@ inputs:
     description: "Config proposed by the onboarding pull request, as JSON"
     required: false
     default: '{"extends":["config:recommended"]}'
+  composer_auth:
+    description: "Composer auth.json"
+    required: false
+  nexus_docker_username:
+    description: "Nexus Docker username"
+    required: false
+  nexus_docker_password:
+    description: "Nexus Docker password"
+    required: false
 
 runs:
   using: "composite"
@@ -73,3 +82,6 @@ runs:
         RENOVATE_PLATFORM: gitea
         RENOVATE_REQUIRE_CONFIG: ${{ inputs.require_config }}
         RENOVATE_TOKEN: ${{ inputs.token }}
+        COMPOSER_AUTH: ${{ inputs.composer_auth }}
+        NEXUS_DOCKER_USERNAME: ${{ inputs.nexus_docker_username }}
+        NEXUS_DOCKER_PASSWORD: ${{ inputs.nexus_docker_password }}
