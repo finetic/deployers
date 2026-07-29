@@ -1,0 +1,75 @@
+---
+name: "Statamic Renovate"
+description: "Run Renovate for one Statamic repository hosted on Gitea"
+
+inputs:
+  token:
+    description: "Gitea personal access token for the Renovate bot"
+    required: true
+  endpoint:
+    description: "Gitea API endpoint"
+    required: false
+    default: "https://git.statamic.finetic.dev/api/v1"
+  repository:
+    description: "Gitea repository in owner/name format"
+    required: false
+    default: ""
+  log_level:
+    description: "Renovate log level"
+    required: false
+    default: "info"
+  onboarding:
+    description: "Create an onboarding pull request when no Renovate config exists"
+    required: false
+    default: "true"
+  require_config:
+    description: "How Renovate handles repositories without config"
+    required: false
+    default: "optional"
+  onboarding_config:
+    description: "Config proposed by the onboarding pull request, as JSON"
+    required: false
+    default: '{"extends":["config:recommended"]}'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Resolve Gitea configuration
+      id: config
+      shell: bash
+      env:
+        INPUT_ENDPOINT: ${{ inputs.endpoint }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        CURRENT_REPOSITORY: ${{ github.repository }}
+        RENOVATE_TOKEN: ${{ inputs.token }}
+      run: |
+        set -euo pipefail
+
+        if [[ -z "${RENOVATE_TOKEN}" ]]; then
+          echo "::error::A Gitea token is required"
+          exit 1
+        fi
+
+        endpoint="${INPUT_ENDPOINT}"
+        repository="${INPUT_REPOSITORY:-${CURRENT_REPOSITORY}}"
+
+        if [[ -z "${endpoint}" || -z "${repository}" ]]; then
+          echo "::error::Could not resolve the Gitea endpoint or repository"
+          exit 1
+        fi
+
+        echo "endpoint=${endpoint}" >> "${GITHUB_OUTPUT}"
+        echo "repository=${repository}" >> "${GITHUB_OUTPUT}"
+
+    - name: Run Renovate
+      uses: docker://renovate/renovate:43
+      with:
+        args: ${{ steps.config.outputs.repository }}
+      env:
+        LOG_LEVEL: ${{ inputs.log_level }}
+        RENOVATE_ENDPOINT: ${{ steps.config.outputs.endpoint }}
+        RENOVATE_ONBOARDING: ${{ inputs.onboarding }}
+        RENOVATE_ONBOARDING_CONFIG: ${{ inputs.onboarding_config }}
+        RENOVATE_PLATFORM: gitea
+        RENOVATE_REQUIRE_CONFIG: ${{ inputs.require_config }}
+        RENOVATE_TOKEN: ${{ inputs.token }}
