@@ -39,16 +39,29 @@ runs:
   steps:
     - name: 🔐 Setup SSH
       shell: bash
+      env:
+        SERVER: ${{ inputs.server }}
+        SSH_KEY: ${{ inputs.ssh_key }}
       run: |
         set -euo pipefail
+
+        if [[ -z "$SERVER" ]]; then
+          echo "::error::server is required for deployment"
+          exit 1
+        fi
+
+        if [[ -z "$SSH_KEY" ]]; then
+          echo "::error::ssh_key is required for deployment"
+          exit 1
+        fi
 
         mkdir -p ~/.ssh
         chmod 700 ~/.ssh
 
-        echo "${{ inputs.ssh_key }}" > ~/.ssh/id_ed25519
+        printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
         chmod 600 ~/.ssh/id_ed25519
 
-        ssh-keyscan -H ${{ inputs.server }} >> ~/.ssh/known_hosts 2>/dev/null
+        ssh-keyscan -H "$SERVER" >> ~/.ssh/known_hosts 2>/dev/null
         sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
 
     - name: 📁 Determine target path
@@ -64,8 +77,8 @@ runs:
         SERVER="${{ inputs.server }}"
 
         case "$SERVER" in
-          statamic.finetic.dev)
-            TARGET="$BASE/${CLIENT}-website/${SITE}-${ENV}"
+          statamic-prod.finetic.dev)
+            TARGET="$BASE/${CLIENT}/${SITE}-${ENV}"
             ;;
           statamic-acc.finetic.dev)
             TARGET="$BASE/${CLIENT}/${SITE}-${ENV}"

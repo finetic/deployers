@@ -42,6 +42,11 @@ on:
         required: false
         default: true
         type: boolean
+      deployment_server:
+        description: Target production server
+        required: false
+        default: statamic-prod.finetic.dev
+        type: string
     secrets:
       composer_auth:
         description: Composer auth.json content
@@ -123,10 +128,11 @@ jobs:
           DOCKER_USERNAME: ${{ secrets.nexus_docker_username }}
           DOCKER_PASSWORD: ${{ secrets.nexus_docker_password }}
           SSH_KEY: ${{ secrets.deployment_private_ssh_key }}
+          DEPLOYMENT_SERVER: ${{ inputs.deployment_server }}
         run: |
           set -euo pipefail
 
-          for name in COMPOSER_AUTH DOCKER_USERNAME DOCKER_PASSWORD SSH_KEY; do
+          for name in COMPOSER_AUTH DOCKER_USERNAME DOCKER_PASSWORD SSH_KEY DEPLOYMENT_SERVER; do
             if [[ -z "${!name}" ]]; then
               echo "::error::${name} is required for a production deployment"
               exit 1
@@ -148,16 +154,9 @@ jobs:
           composer_auth: ${{ secrets.composer_auth }}
           image_tag: production
 
-  release:
-    name: Version and release
-    needs: build
-    uses: https://github.com/finetic/deployers/.github/workflows/versioning.yml@main
-    permissions:
-      contents: write
-
   deploy:
     name: Deploy production
-    needs: release
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Deploy
@@ -165,9 +164,16 @@ jobs:
         with:
           client_name: ${{ inputs.client_name }}
           site_name: ${{ inputs.site_name }}
-          server: statamic-prod.finetic.dev
+          server: ${{ inputs.deployment_server }}
           environment: prod
           ssh_key: ${{ secrets.deployment_private_ssh_key }}
+
+  release:
+    name: Version and release
+    needs: build
+    uses: https://github.com/finetic/deployers/.github/workflows/versioning.yml@main
+    permissions:
+      contents: write
 
   notify-completed:
     name: Notify deployment completed
@@ -176,12 +182,14 @@ jobs:
       - frontend
       - validate
       - build
-      - release
       - deploy
+      - release
     if: >-
       always() &&
-      needs.deploy.result == 'success'
+      needs.deploy.result == 'success' &&
+      needs.release.result == 'success'
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: Send Slack notification
         continue-on-error: true
@@ -192,7 +200,7 @@ jobs:
             ✅ Deploy geslaagd
             Project: ${{ inputs.site_name }}
             Environment: prod
-            Server: statamic.finetic.dev
+            Server: ${{ inputs.deployment_server }}
 
   notify-failed:
     name: Notify deployment failed
@@ -201,8 +209,8 @@ jobs:
       - frontend
       - validate
       - build
-      - release
       - deploy
+      - release
     if: >-
       always() &&
       (
@@ -214,13 +222,45 @@ jobs:
         needs.validate.result == 'cancelled' ||
         needs.build.result == 'failure' ||
         needs.build.result == 'cancelled' ||
-        needs.release.result == 'failure' ||
-        needs.release.result == 'cancelled' ||
         needs.deploy.result == 'failure' ||
-        needs.deploy.result == 'cancelled'
+        needs.deploy.result == 'cancelled' ||
+        needs.release.result == 'failure' ||
+        needs.release.result == 'cancelled'
       )
     runs-on: ubuntu-latest
+    environment: production
     steps:
+      - name: Determine failed steps
+        id: failure
+        shell: bash
+        env:
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          RELEASE_RESULT: ${{ needs.release.result }}
+        run: |
+          set -euo pipefail
+
+          failed_steps=()
+          [[ "$BACKEND_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("backend checks ($BACKEND_RESULT)")
+          [[ "$FRONTEND_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("frontend checks ($FRONTEND_RESULT)")
+          [[ "$VALIDATE_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("deployment configuration validation ($VALIDATE_RESULT)")
+          [[ "$BUILD_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("image build and push ($BUILD_RESULT)")
+          [[ "$DEPLOY_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("production deployment ($DEPLOY_RESULT)")
+          [[ "$RELEASE_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("release ($RELEASE_RESULT)")
+
+          failed_steps_list=$(printf "%s, " "${failed_steps[@]}")
+          failed_steps_list=${failed_steps_list%, }
+          echo "failed_steps=$failed_steps_list" >> "$GITHUB_OUTPUT"
+
       - name: Send Slack notification
         continue-on-error: true
         uses: finetic/deployers/slack-notify@main
@@ -230,4 +270,5 @@ jobs:
             ❌ Deploy mislukt
             Project: ${{ inputs.site_name }}
             Environment: prod
+            Mislukte stap: ${{ steps.failure.outputs.failed_steps }}
             Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

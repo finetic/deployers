@@ -42,6 +42,11 @@ on:
         required: false
         default: true
         type: boolean
+      deployment_server:
+        description: Target acceptance server
+        required: false
+        default: statamic-acc.finetic.dev
+        type: string
     secrets:
       composer_auth:
         description: Composer auth.json content
@@ -123,10 +128,11 @@ jobs:
           DOCKER_USERNAME: ${{ secrets.nexus_docker_username }}
           DOCKER_PASSWORD: ${{ secrets.nexus_docker_password }}
           SSH_KEY: ${{ secrets.deployment_private_ssh_key }}
+          DEPLOYMENT_SERVER: ${{ inputs.deployment_server }}
         run: |
           set -euo pipefail
 
-          for name in COMPOSER_AUTH DOCKER_USERNAME DOCKER_PASSWORD SSH_KEY; do
+          for name in COMPOSER_AUTH DOCKER_USERNAME DOCKER_PASSWORD SSH_KEY DEPLOYMENT_SERVER; do
             if [[ -z "${!name}" ]]; then
               echo "::error::${name} is required for an acceptance deployment"
               exit 1
@@ -158,7 +164,7 @@ jobs:
         with:
           client_name: ${{ inputs.client_name }}
           site_name: ${{ inputs.site_name }}
-          server: statamic-acc.finetic.dev
+          server: ${{ inputs.deployment_server }}
           environment: acc
           ssh_key: ${{ secrets.deployment_private_ssh_key }}
 
@@ -166,6 +172,7 @@ jobs:
     name: Notify deployment completed
     needs: deploy
     runs-on: ubuntu-latest
+    environment: acceptance
     steps:
       - name: Send Slack notification
         continue-on-error: true
@@ -176,7 +183,7 @@ jobs:
             ✅ Deploy geslaagd
             Project: ${{ inputs.site_name }}
             Environment: acc
-            Server: statamic-acc.finetic.dev
+            Server: ${{ inputs.deployment_server }}
 
   notify-failed:
     name: Notify deployment failed
@@ -188,9 +195,49 @@ jobs:
       - deploy
     if: >-
       always() &&
-      contains(needs.*.result, 'failure')
+      (
+        needs.backend.result == 'failure' ||
+        needs.backend.result == 'cancelled' ||
+        needs.frontend.result == 'failure' ||
+        needs.frontend.result == 'cancelled' ||
+        needs.validate.result == 'failure' ||
+        needs.validate.result == 'cancelled' ||
+        needs.build.result == 'failure' ||
+        needs.build.result == 'cancelled' ||
+        needs.deploy.result == 'failure' ||
+        needs.deploy.result == 'cancelled'
+      )
     runs-on: ubuntu-latest
+    environment: acceptance
     steps:
+      - name: Determine failed steps
+        id: failure
+        shell: bash
+        env:
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+        run: |
+          set -euo pipefail
+
+          failed_steps=()
+          [[ "$BACKEND_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("backend checks ($BACKEND_RESULT)")
+          [[ "$FRONTEND_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("frontend checks ($FRONTEND_RESULT)")
+          [[ "$VALIDATE_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("deployment configuration validation ($VALIDATE_RESULT)")
+          [[ "$BUILD_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("image build and push ($BUILD_RESULT)")
+          [[ "$DEPLOY_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("acceptance deployment ($DEPLOY_RESULT)")
+
+          failed_steps_list=$(printf "%s, " "${failed_steps[@]}")
+          failed_steps_list=${failed_steps_list%, }
+          echo "failed_steps=$failed_steps_list" >> "$GITHUB_OUTPUT"
+
       - name: Send Slack notification
         continue-on-error: true
         uses: finetic/deployers/slack-notify@main
@@ -200,4 +247,5 @@ jobs:
             ❌ Deploy mislukt
             Project: ${{ inputs.site_name }}
             Environment: acc
+            Mislukte stap: ${{ steps.failure.outputs.failed_steps }}
             Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
