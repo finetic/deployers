@@ -65,6 +65,10 @@ before Renovate starts.
 - `log_level`: Renovate log level. Defaults to `debug`.
 - `enabled_managers`: JSON array of enabled managers. Composer is required and
   enabled by default alongside npm, Docker and GitHub Actions managers.
+- `pr_hourly_limit`: Maximum pull requests Renovate may create per hour.
+  Defaults to `0` (unlimited).
+- `pr_concurrent_limit`: Maximum concurrent Renovate pull requests. Defaults to
+  `0` (unlimited).
 - `onboarding`: Whether to open an onboarding pull request. Defaults to `true`.
 - `require_config`: Behavior when no config exists. Defaults to `optional`.
 - `onboarding_config`: JSON used in the onboarding pull request. Defaults to

@@ -25,6 +25,14 @@ inputs:
     description: "Renovate managers to enable, as a JSON array"
     required: false
     default: '["composer","npm","dockerfile","docker-compose","github-actions"]'
+  pr_hourly_limit:
+    description: "Maximum pull requests Renovate may create per hour; 0 is unlimited"
+    required: false
+    default: "0"
+  pr_concurrent_limit:
+    description: "Maximum concurrent Renovate pull requests; 0 is unlimited"
+    required: false
+    default: "10"
   onboarding:
     description: "Create an onboarding pull request when no Renovate config exists"
     required: false
@@ -68,6 +76,8 @@ runs:
         CURRENT_REPOSITORY: ${{ github.repository }}
         RENOVATE_TOKEN: ${{ inputs.token }}
         INPUT_ENABLED_MANAGERS: ${{ inputs.enabled_managers }}
+        INPUT_PR_HOURLY_LIMIT: ${{ inputs.pr_hourly_limit }}
+        INPUT_PR_CONCURRENT_LIMIT: ${{ inputs.pr_concurrent_limit }}
       run: |
         set -euo pipefail
 
@@ -95,6 +105,16 @@ runs:
         if ! jq -e 'index("composer") != null' \
           <<< "${INPUT_ENABLED_MANAGERS}" >/dev/null; then
           echo "::error::The composer manager must be present in enabled_managers"
+          exit 1
+        fi
+
+        if [[ ! "${INPUT_PR_HOURLY_LIMIT}" =~ ^[0-9]+$ ]]; then
+          echo "::error::pr_hourly_limit must be a non-negative integer"
+          exit 1
+        fi
+
+        if [[ ! "${INPUT_PR_CONCURRENT_LIMIT}" =~ ^[0-9]+$ ]]; then
+          echo "::error::pr_concurrent_limit must be a non-negative integer"
           exit 1
         fi
 
@@ -314,6 +334,8 @@ runs:
         RENOVATE_ONBOARDING: ${{ inputs.onboarding }}
         RENOVATE_ONBOARDING_CONFIG: ${{ inputs.onboarding_config }}
         RENOVATE_ENABLED_MANAGERS: ${{ steps.config.outputs.enabled_managers }}
+        RENOVATE_PR_HOURLY_LIMIT: ${{ inputs.pr_hourly_limit }}
+        RENOVATE_PR_CONCURRENT_LIMIT: ${{ inputs.pr_concurrent_limit }}
         RENOVATE_PLATFORM: gitea
         RENOVATE_REQUIRE_CONFIG: ${{ inputs.require_config }}
         RENOVATE_STATUS_CHECK_WHEN: '{"artifactError":"always"}'
