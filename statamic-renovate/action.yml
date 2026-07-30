@@ -33,7 +33,7 @@ inputs:
     description: "Config proposed by the onboarding pull request, as JSON"
     required: false
     default: >-
-      {"extends":["config:recommended"],"ignorePresets":["group:monorepos","group:recommended"],"packageRules":[{"matchManagers":["composer"],"groupName":null}],"rebaseWhen":"behind-base-branch"}
+      {"extends":["config:recommended"],"ignorePresets":["group:monorepos","group:recommended"],"packageRules":[{"matchManagers":["composer"],"groupName":null}],"lockFileMaintenance":{"enabled":true,"schedule":["at any time"]},"rebaseWhen":"behind-base-branch"}
   composer_auth:
     description: "Composer auth.json"
     required: false

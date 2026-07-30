@@ -24,6 +24,8 @@ jobs:
         uses: https://github.com/finetic/deployers/statamic-renovate@main
         with:
           token: ${{ secrets.RENOVATE_TOKEN }}
+          github_token: ${{ secrets.RENOVATE_GH_TOKEN }}
+          composer_auth: ${{ secrets.COMPOSER_AUTH }}
 ```
 
 Create `RENOVATE_TOKEN` as an Actions secret. It should be a personal access
