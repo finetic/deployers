@@ -85,7 +85,7 @@ jobs:
       always() &&
       inputs.notify_pr_ready &&
       github.event_name == 'pull_request' &&
-      github.event.action != 'synchronize' &&
+      !contains(fromJSON('["synchronize", "synchronized"]'), github.event.action) &&
       github.event.pull_request.draft == false &&
       !contains(github.event.pull_request.labels.*.name, 'release') &&
       needs.backend.result != 'failure' &&
