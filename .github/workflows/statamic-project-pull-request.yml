@@ -85,6 +85,7 @@ jobs:
       always() &&
       inputs.notify_pr_ready &&
       github.event_name == 'pull_request' &&
+      github.event.action != 'synchronize' &&
       github.event.pull_request.draft == false &&
       !contains(github.event.pull_request.labels.*.name, 'release') &&
       needs.backend.result != 'failure' &&
@@ -102,5 +103,5 @@ jobs:
             Klant: ${{ inputs.client_name }}
             Project: ${{ inputs.site_name }}
             PR: ${{ github.event.pull_request.title }}
-            Auteur: ${{ github.actor }}
+            Auteur: ${{ startsWith(github.event.pull_request.head.ref, 'renovate/') && 'Renovate' || github.actor }}
             Link: ${{ github.event.pull_request.html_url }}
