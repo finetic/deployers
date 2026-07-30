@@ -20,7 +20,11 @@ inputs:
   log_level:
     description: "Renovate log level"
     required: false
-    default: "info"
+    default: "debug"
+  enabled_managers:
+    description: "Renovate managers to enable, as a JSON array"
+    required: false
+    default: '["composer","npm","dockerfile","docker-compose","github-actions"]'
   onboarding:
     description: "Create an onboarding pull request when no Renovate config exists"
     required: false
@@ -37,6 +41,10 @@ inputs:
   composer_auth:
     description: "Composer auth.json"
     required: false
+  composer_registry:
+    description: "Composer registry used for the Packeton metadata preflight"
+    required: false
+    default: "https://packeton.finetic.dev"
   nexus_docker_username:
     description: "Nexus Docker username"
     required: false
@@ -59,8 +67,11 @@ runs:
         INPUT_REPOSITORY: ${{ inputs.repository }}
         CURRENT_REPOSITORY: ${{ github.repository }}
         RENOVATE_TOKEN: ${{ inputs.token }}
+        INPUT_ENABLED_MANAGERS: ${{ inputs.enabled_managers }}
       run: |
         set -euo pipefail
+
+        echo "::add-mask::${RENOVATE_TOKEN}"
 
         if [[ -z "${RENOVATE_TOKEN}" ]]; then
           echo "::error::A Gitea token is required"
@@ -75,14 +86,29 @@ runs:
           exit 1
         fi
 
+        if ! jq -e 'type == "array" and all(.[]; type == "string")' \
+          <<< "${INPUT_ENABLED_MANAGERS}" >/dev/null; then
+          echo "::error::enabled_managers must be a JSON array of strings"
+          exit 1
+        fi
+
+        if ! jq -e 'index("composer") != null' \
+          <<< "${INPUT_ENABLED_MANAGERS}" >/dev/null; then
+          echo "::error::The composer manager must be present in enabled_managers"
+          exit 1
+        fi
+
         echo "endpoint=${endpoint}" >> "${GITHUB_OUTPUT}"
         echo "repository=${repository}" >> "${GITHUB_OUTPUT}"
+        echo "enabled_managers=$(jq -c . <<< "${INPUT_ENABLED_MANAGERS}")" >> "${GITHUB_OUTPUT}"
+        echo "::notice::Renovate composer manager is enabled"
 
     - name: Configure package registry access
       id: registry_access
       shell: bash
       env:
         INPUT_COMPOSER_AUTH: ${{ inputs.composer_auth }}
+        INPUT_COMPOSER_REGISTRY: ${{ inputs.composer_registry }}
         INPUT_NEXUS_DOCKER_REGISTRY: ${{ inputs.nexus_docker_registry }}
         INPUT_NEXUS_DOCKER_USERNAME: ${{ inputs.nexus_docker_username }}
         INPUT_NEXUS_DOCKER_PASSWORD: ${{ inputs.nexus_docker_password }}
@@ -92,6 +118,22 @@ runs:
         composer_rules='[]'
 
         if [[ -n "${INPUT_COMPOSER_AUTH}" ]]; then
+          if ! jq -e 'type == "object"' <<< "${INPUT_COMPOSER_AUTH}" >/dev/null; then
+            echo "::error::composer_auth must contain a valid Composer auth.json object"
+            exit 1
+          fi
+
+          while IFS= read -r secret; do
+            [[ -n "${secret}" ]] && echo "::add-mask::${secret}"
+          done < <(
+            jq -r '
+              [
+                (."http-basic" // {} | to_entries[]? | .value.username, .value.password),
+                (.bearer // {} | to_entries[]? | .value)
+              ] | .[] // empty
+            ' <<< "${INPUT_COMPOSER_AUTH}"
+          )
+
           composer_rules="$(
             jq -ce '
               [
@@ -99,12 +141,16 @@ runs:
                   hostType: "packagist",
                   matchHost: .key,
                   username: .value.username,
-                  password: .value.password
+                  password: .value.password,
+                  abortOnError: true,
+                  abortIgnoreStatusCodes: [404]
                 }),
                 (.bearer // {} | to_entries[]? | {
                   hostType: "packagist",
                   matchHost: .key,
-                  token: .value
+                  token: .value,
+                  abortOnError: true,
+                  abortIgnoreStatusCodes: [404]
                 })
               ]
             ' <<< "${INPUT_COMPOSER_AUTH}"
@@ -130,7 +176,133 @@ runs:
               end'
         )"
 
+        echo "::add-mask::${host_rules}"
         echo "host_rules=${host_rules}" >> "${GITHUB_OUTPUT}"
+        echo "composer_registry=${INPUT_COMPOSER_REGISTRY%/}" >> "${GITHUB_OUTPUT}"
+        composer_rule_count="$(
+          jq 'map(select(.hostType == "packagist")) | length' <<< "${host_rules}"
+        )"
+        echo "::notice::Configured ${composer_rule_count} Composer host rule(s)"
+
+    - name: Verify Composer repository and Packeton access
+      shell: bash
+      env:
+        API_ENDPOINT: ${{ steps.config.outputs.endpoint }}
+        TARGET_REPOSITORY: ${{ steps.config.outputs.repository }}
+        RENOVATE_TOKEN: ${{ inputs.token }}
+        INPUT_COMPOSER_AUTH: ${{ inputs.composer_auth }}
+        COMPOSER_REGISTRY: ${{ steps.registry_access.outputs.composer_registry }}
+      run: |
+        set -euo pipefail
+
+        echo "::add-mask::${RENOVATE_TOKEN}"
+
+        api_root="${API_ENDPOINT%/}"
+        repo_json="$(curl --fail --silent --show-error \
+          --header "Authorization: token ${RENOVATE_TOKEN}" \
+          "${api_root}/repos/${TARGET_REPOSITORY}")"
+        default_branch="$(jq -er '.default_branch' <<< "${repo_json}")"
+
+        echo "::notice::Renovate target ${TARGET_REPOSITORY}"
+        echo "::notice::Using repository default branch ${default_branch}"
+
+        fetch_file() {
+          local path="$1"
+          curl --fail --silent --show-error \
+            --header "Authorization: token ${RENOVATE_TOKEN}" \
+            --get \
+            --data-urlencode "ref=${default_branch}" \
+            "${api_root}/repos/${TARGET_REPOSITORY}/contents/${path}" |
+            jq -er '.content' | tr -d '\n' | base64 --decode
+        }
+
+        composer_json="$(fetch_file composer.json)" || {
+          echo "::error::composer.json was not found on default branch ${default_branch}"
+          exit 1
+        }
+        composer_lock="$(fetch_file composer.lock)" || {
+          echo "::error::composer.lock was not found on default branch ${default_branch}"
+          exit 1
+        }
+
+        if renovate_config="$(fetch_file renovate.json 2>/dev/null)"; then
+          repository_managers="$(jq -c '.enabledManagers // []' <<< "${renovate_config}")"
+          echo "::notice::Repository renovate.json enabledManagers: ${repository_managers}"
+          if jq -e '.enabledManagers != null and
+            (.enabledManagers | index("composer") == null)' \
+            <<< "${renovate_config}" >/dev/null; then
+            echo "::warning::Repository renovate.json excludes composer; action-level enabled_managers overrides it"
+          fi
+          suppressed="$(
+            jq -c '.suppressNotifications // [] |
+              map(select(. == "artifactErrors" or
+                . == "dependencyLookupWarnings" or
+                . == "lockFileErrors" or
+                . == "missingCredentialsError"))' <<< "${renovate_config}"
+          )"
+          if [[ "${suppressed}" != "[]" ]]; then
+            echo "::warning::Repository renovate.json suppresses Composer-relevant notifications: ${suppressed}"
+          fi
+        else
+          echo "::notice::No renovate.json found; Renovate onboarding/default configuration applies"
+        fi
+
+        direct_dependency_count="$(
+          jq '[(.require // {}), (."require-dev" // {})] |
+            add | keys | map(select(. != "php" and
+              (startswith("ext-") | not) and
+              (startswith("lib-") | not))) | length' \
+            <<< "${composer_json}"
+        )"
+        locked_package_count="$(
+          jq '[(.packages // []), (."packages-dev" // [])] | add | length' \
+            <<< "${composer_lock}"
+        )"
+        if (( direct_dependency_count == 0 || locked_package_count == 0 )); then
+          echo "::error::No Composer dependencies were detected in composer.json or composer.lock"
+          exit 1
+        fi
+        echo "::notice::Detected ${direct_dependency_count} direct Composer dependencies"
+        echo "::notice::Detected ${locked_package_count} locked Composer packages"
+
+        registry_host="${COMPOSER_REGISTRY#*://}"
+        registry_host="${registry_host%%/*}"
+        curl_auth=()
+        if [[ -n "${INPUT_COMPOSER_AUTH}" ]]; then
+          basic_username="$(
+            jq -r --arg host "${registry_host}" \
+              '."http-basic"[$host].username // empty' <<< "${INPUT_COMPOSER_AUTH}"
+          )"
+          basic_password="$(
+            jq -r --arg host "${registry_host}" \
+              '."http-basic"[$host].password // empty' <<< "${INPUT_COMPOSER_AUTH}"
+          )"
+          bearer_token="$(
+            jq -r --arg host "${registry_host}" \
+              '.bearer[$host] // empty' <<< "${INPUT_COMPOSER_AUTH}"
+          )"
+          if [[ -n "${basic_username}" && -n "${basic_password}" ]]; then
+            echo "::add-mask::${basic_username}"
+            echo "::add-mask::${basic_password}"
+            curl_auth=(--user "${basic_username}:${basic_password}")
+          elif [[ -n "${bearer_token}" ]]; then
+            echo "::add-mask::${bearer_token}"
+            curl_auth=(--header "Authorization: Bearer ${bearer_token}")
+          fi
+        fi
+
+        for repository_url in \
+          "${COMPOSER_REGISTRY%/}" \
+          "${COMPOSER_REGISTRY%/}/mirror/packagist"; do
+          curl --fail --silent --show-error \
+            "${curl_auth[@]}" \
+            "${repository_url}/packages.json" >/dev/null || {
+            echo "::error::Composer repository metadata is inaccessible at ${repository_url}"
+            exit 1
+          }
+          echo "::notice::Composer repository metadata is accessible at ${repository_url}"
+        done
+        echo "::notice::Renovate debug output will show extracted Composer dependencies and lockfile updates"
 
     - name: Run Renovate
       uses: docker://renovate/renovate:43
@@ -141,8 +313,10 @@ runs:
         RENOVATE_ENDPOINT: ${{ steps.config.outputs.endpoint }}
         RENOVATE_ONBOARDING: ${{ inputs.onboarding }}
         RENOVATE_ONBOARDING_CONFIG: ${{ inputs.onboarding_config }}
+        RENOVATE_ENABLED_MANAGERS: ${{ steps.config.outputs.enabled_managers }}
         RENOVATE_PLATFORM: gitea
         RENOVATE_REQUIRE_CONFIG: ${{ inputs.require_config }}
+        RENOVATE_STATUS_CHECK_WHEN: '{"artifactError":"always"}'
         RENOVATE_TOKEN: ${{ inputs.token }}
         GITHUB_COM_TOKEN: ${{ inputs.github_token }}
         COMPOSER_AUTH: ${{ inputs.composer_auth }}

@@ -43,6 +43,18 @@ By default Renovate opens an onboarding pull request containing
 Composer, npm and other detected dependencies according to the generated
 `renovate.json`.
 
+`COMPOSER_AUTH` must be a complete Composer `auth.json` JSON object. For
+Packeton with HTTP Basic authentication, store this as an Actions secret:
+
+```json
+{"http-basic":{"packeton.finetic.dev":{"username":"...","password":"..."}}}
+```
+
+Do not add this value to `renovate.json` or the repository. The action derives
+masked Renovate `hostRules` from it, passes the original object to Composer for
+lockfile updates, and verifies both Packeton Composer repository endpoints
+before Renovate starts.
+
 ## Inputs
 
 - `token` (required): Gitea personal access token.
@@ -50,8 +62,12 @@ Composer, npm and other detected dependencies according to the generated
   `https://git.statamic.finetic.dev/api/v1`.
 - `repository`: Repository in `owner/name` format. Defaults to
   `${{ github.repository }}`.
-- `log_level`: Renovate log level. Defaults to `info`.
+- `log_level`: Renovate log level. Defaults to `debug`.
+- `enabled_managers`: JSON array of enabled managers. Composer is required and
+  enabled by default alongside npm, Docker and GitHub Actions managers.
 - `onboarding`: Whether to open an onboarding pull request. Defaults to `true`.
 - `require_config`: Behavior when no config exists. Defaults to `optional`.
 - `onboarding_config`: JSON used in the onboarding pull request. Defaults to
   `{"extends":["config:recommended"]}`.
+- `composer_auth`: complete Composer `auth.json`, supplied through a secret.
+- `composer_registry`: Packeton base URL used by the metadata preflight.
