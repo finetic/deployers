@@ -140,7 +140,7 @@ jobs:
             fi
 
             # Zero-pad voor sortering
-            PAD=$(printf "%08d" "$NUM")
+            PAD=$(printf '%08d' "$((10#$NUM))")
             LINE="- ${SUBJ} (${SHORT}) — ${AUTH}"
 
             # append naar juiste categorie
