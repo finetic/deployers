@@ -20,7 +20,7 @@ inputs:
   log_level:
     description: "Renovate log level"
     required: false
-    default: "debug"
+    default: "info"
   enabled_managers:
     description: "Renovate managers to enable, as a JSON array"
     required: false
@@ -32,7 +32,7 @@ inputs:
   pr_concurrent_limit:
     description: "Maximum concurrent Renovate pull requests; 0 is unlimited"
     required: false
-    default: "10"
+    default: "2"
   onboarding:
     description: "Create an onboarding pull request when no Renovate config exists"
     required: false
