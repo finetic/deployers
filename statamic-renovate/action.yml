@@ -468,7 +468,7 @@ runs:
           echo "::notice::renovate.json found with ${package_rule_count} package rule(s)"
         else
           echo "::notice::No renovate.json found on ${DEFAULT_BRANCH}"
-          echo "::notice::Renovate will use onboarding/default configuration"
+          echo "::notice::Renovate will use the centrally managed configuration"
         fi
 
     - name: Verify Composer registry access
@@ -562,10 +562,6 @@ runs:
               "config:recommended"
             ],
             "timezone": "Europe/Amsterdam",
-            "schedule": [
-              "before 6:00am on monday"
-            ],
-            "updateNotScheduled": false,
             "dependencyDashboard": true,
             "dependencyDashboardTitle": "Dependency Dashboard",
             "semanticCommits": "enabled",
@@ -573,7 +569,10 @@ runs:
             "semanticCommitScope": "deps",
             "rebaseWhen": "behind-base-branch",
             "rangeStrategy": "replace",
-            "pinDigests": false
+            "pinDigests": false,
+            "lockFileMaintenance": {
+              "enabled": false
+            }
           }
 
         RENOVATE_ENABLED_MANAGERS: ${{ steps.config.outputs.enabled_managers }}
