@@ -40,45 +40,6 @@ inputs:
     required: false
     default: "5"
 
-  onboarding:
-    description: "Create an onboarding pull request when no Renovate config exists"
-    required: false
-    default: "true"
-
-  require_config:
-    description: "How Renovate handles repositories without config"
-    required: false
-    default: "optional"
-
-  onboarding_config:
-    description: "Minimal configuration proposed by the onboarding pull request"
-    required: false
-    default: >-
-      {
-        "extends": [
-          "config:recommended"
-        ],
-        "enabledManagers": [
-          "composer",
-          "npm",
-          "dockerfile",
-          "docker-compose",
-          "github-actions"
-        ],
-        "timezone": "Europe/Amsterdam",
-        "schedule": [
-          "before 6:00am on monday"
-        ],
-        "dependencyDashboard": true,
-        "dependencyDashboardTitle": "Renovate dependency updates",
-        "semanticCommits": "enabled",
-        "semanticCommitType": "chore",
-        "semanticCommitScope": "deps",
-        "rebaseWhen": "behind-base-branch",
-        "rangeStrategy": "replace",
-        "pinDigests": false
-      }
-
   composer_auth:
     description: "Composer auth.json"
     required: false
@@ -592,9 +553,28 @@ runs:
         RENOVATE_ENDPOINT: ${{ steps.config.outputs.endpoint }}
         RENOVATE_TOKEN: ${{ inputs.token }}
 
-        RENOVATE_ONBOARDING: ${{ inputs.onboarding }}
-        RENOVATE_ONBOARDING_CONFIG: ${{ inputs.onboarding_config }}
-        RENOVATE_REQUIRE_CONFIG: ${{ inputs.require_config }}
+        RENOVATE_ONBOARDING: "false"
+        RENOVATE_REQUIRE_CONFIG: "optional"
+
+        RENOVATE_CONFIG: >-
+          {
+            "extends": [
+              "config:recommended"
+            ],
+            "timezone": "Europe/Amsterdam",
+            "schedule": [
+              "before 6:00am on monday"
+            ],
+            "updateNotScheduled": false,
+            "dependencyDashboard": true,
+            "dependencyDashboardTitle": "Dependency Dashboard",
+            "semanticCommits": "enabled",
+            "semanticCommitType": "chore",
+            "semanticCommitScope": "deps",
+            "rebaseWhen": "behind-base-branch",
+            "rangeStrategy": "replace",
+            "pinDigests": false
+          }
 
         RENOVATE_ENABLED_MANAGERS: ${{ steps.config.outputs.enabled_managers }}
         RENOVATE_PR_HOURLY_LIMIT: ${{ inputs.pr_hourly_limit }}
