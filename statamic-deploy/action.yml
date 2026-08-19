@@ -132,10 +132,9 @@ runs:
           echo "📄 Refresh static"
           docker exec \$CONTAINER_NAME php artisan statamic:static:clear
           docker exec \$CONTAINER_NAME php artisan statamic:static:warm \
-            --uncached \
             --queue \
             --max-depth=1 \
-            --max-requests=500
+            --max-requests=100
 
           echo "Deploy completed"
         EOF
