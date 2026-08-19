@@ -43,6 +43,10 @@ By default Renovate opens an onboarding pull request containing
 Composer, npm and other detected dependencies according to the generated
 `renovate.json`.
 
+Existing Renovate branches are only rebased when they conflict with the base
+branch. This prevents scheduled Renovate runs from retriggering project builds
+when the dependency update itself has not changed.
+
 `COMPOSER_AUTH` must be a complete Composer `auth.json` JSON object. For
 Packeton with HTTP Basic authentication, store this as an Actions secret:
 

@@ -567,7 +567,7 @@ runs:
             "semanticCommits": "enabled",
             "semanticCommitType": "chore",
             "semanticCommitScope": "deps",
-            "rebaseWhen": "behind-base-branch",
+            "rebaseWhen": "conflicted",
             "rangeStrategy": "replace",
             "pinDigests": false,
             "lockFileMaintenance": {
