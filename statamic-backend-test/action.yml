@@ -30,8 +30,8 @@ runs:
           memory_limit=-1
           opcache.enable_cli=1
           opcache.jit=0
-        env:
-          sodium_libs: libsodium-dev
+      env:
+        sodium_libs: libsodium-dev
 
     - name: Cache composer
       uses: actions/cache@v5
