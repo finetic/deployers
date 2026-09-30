@@ -119,6 +119,9 @@ runs:
           # 🔥 Container naam bepalen
           CONTAINER_NAME="${{ inputs.site_name }}-${{ inputs.environment }}"
 
+          echo "🗄️ Run database migrations"
+          docker exec \$CONTAINER_NAME php artisan migrate --force
+
           echo "🧹 Clear cache"
           docker exec \$CONTAINER_NAME php artisan cache:clear
 
