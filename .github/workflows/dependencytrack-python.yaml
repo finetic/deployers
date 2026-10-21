@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v3
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -36,7 +36,7 @@ jobs:
           cyclonedx-py environment >sbom.json
 
       - name: upload
-        uses: DependencyTrack/gh-upload-sbom@v3
+        uses: DependencyTrack/gh-upload-sbom@v4
         with:
           serverhostname: ${{vars.DEPENDENCY_TRACK_HOSTNAME}}
           apikey: ${{secrets.DEPENDENCY_TRACK_API_KEY}}

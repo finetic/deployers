@@ -22,9 +22,9 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup npm
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Install SBOM composer plugin
         run: |-
@@ -43,7 +43,7 @@ jobs:
           cyclonedx-npm --output-format XML --output-file sbom.xml --ignore-npm-errors
 
       - name: upload
-        uses: DependencyTrack/gh-upload-sbom@v3
+        uses: DependencyTrack/gh-upload-sbom@v4
         with:
           serverhostname: ${{vars.DEPENDENCY_TRACK_HOSTNAME}}
           apikey: ${{secrets.DEPENDENCY_TRACK_API_KEY}}

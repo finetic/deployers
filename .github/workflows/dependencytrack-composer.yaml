@@ -40,7 +40,7 @@ jobs:
           composer CycloneDX:make-sbom --output-file=sbom.xml
 
       - name: upload
-        uses: DependencyTrack/gh-upload-sbom@v3
+        uses: DependencyTrack/gh-upload-sbom@v4
         with:
           serverhostname: ${{vars.DEPENDENCY_TRACK_HOSTNAME}}
           apikey: ${{secrets.DEPENDENCY_TRACK_API_KEY}}
