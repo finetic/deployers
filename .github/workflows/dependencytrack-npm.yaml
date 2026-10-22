@@ -26,27 +26,36 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Install SBOM composer plugin
+      - name: Install SBOM plugin
+        working-directory: ${{ inputs.package_location }}
         run: |-
-          cd ${{inputs.package_location}}
+          set -euo pipefail
           npm install --global @cyclonedx/cyclonedx-npm
 
       - name: Install npm packages
+        working-directory: ${{ inputs.package_location }}
         run: |-
-          cd ${{inputs.package_location}}
+          set -euo pipefail
           npm ci
 
       - name: Create SBOM step
         # see for usage: https://www.npmjs.com/package/@cyclonedx/cyclonedx-npm
+        working-directory: ${{ inputs.package_location }}
         run: |-
-          cd ${{inputs.package_location}}
-          cyclonedx-npm --output-format XML --output-file sbom.xml --ignore-npm-errors
+          set -euo pipefail
+          cyclonedx-npm --output-format XML --output-file sbom.xml --validate --ignore-npm-errors
+
+      - name: Check SBOM file
+        working-directory: ${{ inputs.package_location }}
+        run: |-
+          set -euo pipefail
+          test -s sbom.xml
 
       - name: upload
         uses: DependencyTrack/gh-upload-sbom@v4
         with:
-          serverhostname: ${{vars.DEPENDENCY_TRACK_HOSTNAME}}
-          apikey: ${{secrets.DEPENDENCY_TRACK_API_KEY}}
-          project: ${{inputs.project_uuid}}
-          bomfilename: ${{inputs.package_location}}/sbom.xml
-          autocreate: false
+          server-hostname: ${{ vars.DEPENDENCY_TRACK_HOSTNAME }}
+          api-key: ${{ secrets.DEPENDENCY_TRACK_API_KEY }}
+          project: ${{ inputs.project_uuid }}
+          bom-filename: ${{ inputs.package_location }}/sbom.xml
+          auto-create: false

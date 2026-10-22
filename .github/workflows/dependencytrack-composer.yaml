@@ -28,22 +28,30 @@ jobs:
           tools: 'composer:v2'
 
       - name: Install SBOM composer plugin
+        working-directory: ${{ inputs.composer_location }}
         run: |-
-          cd ${{inputs.composer_location}}
+          set -euo pipefail
           composer global config --no-plugins allow-plugins.cyclonedx/cyclonedx-php-composer true
           composer global require cyclonedx/cyclonedx-php-composer
 
       - name: Create SBOM step
         # see for usage: https://packagist.org/packages/cyclonedx/cyclonedx-php-composer
+        working-directory: ${{ inputs.composer_location }}
         run: |-
-          cd ${{inputs.composer_location}}
-          composer CycloneDX:make-sbom --output-file=sbom.xml
+          set -euo pipefail
+          composer CycloneDX:make-sbom --output-file=sbom.xml --validate
+
+      - name: Check SBOM file
+        working-directory: ${{ inputs.composer_location }}
+        run: |-
+          set -euo pipefail
+          test -s sbom.xml
 
       - name: upload
         uses: DependencyTrack/gh-upload-sbom@v4
         with:
-          serverhostname: ${{vars.DEPENDENCY_TRACK_HOSTNAME}}
-          apikey: ${{secrets.DEPENDENCY_TRACK_API_KEY}}
-          project: ${{inputs.project_uuid}}
-          bomfilename: ${{inputs.composer_location}}/sbom.xml
-          autocreate: false
+          server-hostname: ${{ vars.DEPENDENCY_TRACK_HOSTNAME }}
+          api-key: ${{ secrets.DEPENDENCY_TRACK_API_KEY }}
+          project: ${{ inputs.project_uuid }}
+          bom-filename: ${{ inputs.composer_location }}/sbom.xml
+          auto-create: false
