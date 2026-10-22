@@ -39,13 +39,13 @@ jobs:
         working-directory: ${{ inputs.composer_location }}
         run: |-
           set -euo pipefail
-          composer CycloneDX:make-sbom --output-file=sbom.xml --validate
+          composer CycloneDX:make-sbom --output-format=JSON --output-file=sbom.json --validate
 
       - name: Check SBOM file
         working-directory: ${{ inputs.composer_location }}
         run: |-
           set -euo pipefail
-          test -s sbom.xml
+          test -s sbom.json
 
       - name: upload
         id: upload
@@ -54,7 +54,7 @@ jobs:
           server-hostname: ${{ vars.DEPENDENCY_TRACK_HOSTNAME }}
           api-key: ${{ secrets.DEPENDENCY_TRACK_API_KEY }}
           project: ${{ inputs.project_uuid }}
-          bom-filename: ${{ inputs.composer_location }}/sbom.xml
+          bom-filename: ${{ inputs.composer_location }}/sbom.json
           auto-create: false
 
       # Temporary: repeat a failed upload once to expose the server's rejection details.
@@ -67,7 +67,7 @@ jobs:
           PROJECT_UUID: ${{ inputs.project_uuid }}
         run: |-
           set -euo pipefail
-          test -s sbom.xml
+          test -s sbom.json
           response_file="$(mktemp)"
           trap 'rm -f "$response_file"' EXIT
           status=$(curl --silent --show-error \
@@ -75,7 +75,7 @@ jobs:
             --output "$response_file" --write-out '%{http_code}' \
             --header "X-Api-Key: ${DEPENDENCY_TRACK_API_KEY}" \
             --form-string "project=${PROJECT_UUID}" \
-            --form 'bom=@sbom.xml;filename=bom;type=application/octet-stream' \
+            --form 'bom=@sbom.json;filename=bom;type=application/octet-stream' \
             "https://${DEPENDENCY_TRACK_HOSTNAME}/api/v1/bom")
           echo "Diagnostic upload HTTP status: ${status}"
           python3 - "$response_file" <<'PY'
