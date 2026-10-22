@@ -48,6 +48,7 @@ jobs:
           test -s sbom.xml
 
       - name: upload
+        id: upload
         uses: DependencyTrack/gh-upload-sbom@v4
         with:
           server-hostname: ${{ vars.DEPENDENCY_TRACK_HOSTNAME }}
@@ -55,3 +56,39 @@ jobs:
           project: ${{ inputs.project_uuid }}
           bom-filename: ${{ inputs.composer_location }}/sbom.xml
           auto-create: false
+
+      # Temporary: repeat a failed upload once to expose the server's rejection details.
+      - name: Diagnose failed Dependency-Track upload
+        if: ${{ failure() && steps.upload.outcome == 'failure' }}
+        working-directory: ${{ inputs.composer_location }}
+        env:
+          DEPENDENCY_TRACK_HOSTNAME: ${{ vars.DEPENDENCY_TRACK_HOSTNAME }}
+          DEPENDENCY_TRACK_API_KEY: ${{ secrets.DEPENDENCY_TRACK_API_KEY }}
+          PROJECT_UUID: ${{ inputs.project_uuid }}
+        run: |-
+          set -euo pipefail
+          test -s sbom.xml
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+          status=$(curl --silent --show-error \
+            --connect-timeout 30 --max-time 120 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --header "X-Api-Key: ${DEPENDENCY_TRACK_API_KEY}" \
+            --form-string "project=${PROJECT_UUID}" \
+            --form 'bom=@sbom.xml;filename=bom;type=application/octet-stream' \
+            "https://${DEPENDENCY_TRACK_HOSTNAME}/api/v1/bom")
+          echo "Diagnostic upload HTTP status: ${status}"
+          python3 - "$response_file" <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+
+          body = Path(sys.argv[1]).read_text(errors="replace")
+          key = os.environ["DEPENDENCY_TRACK_API_KEY"]
+          if key:
+              body = body.replace(key, "***")
+          for line in body.splitlines():
+              print(f"Dependency-Track response: {line}")
+          if not body:
+              print("Dependency-Track returned an empty response body.")
+          PY
