@@ -12,6 +12,11 @@ on:
         description: Site name used for the Docker image and deployment
         required: true
         type: string
+      deploy_sites:
+        description: JSON array of deployment sites; empty deploys site_name only
+        required: false
+        default: ""
+        type: string
       registry:
         description: Docker registry
         required: false
@@ -155,15 +160,19 @@ jobs:
           image_tag: acceptance
 
   deploy:
-    name: Deploy acceptance
+    name: Deploy acceptance - ${{ matrix.site }}
     needs: build
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        site: ${{ fromJSON(inputs.deploy_sites || format('["{0}"]', inputs.site_name)) }}
     steps:
       - name: Deploy
         uses: finetic/deployers/statamic-deploy@main
         with:
           client_name: ${{ inputs.client_name }}
-          site_name: ${{ inputs.site_name }}
+          site_name: ${{ matrix.site }}
           server: ${{ inputs.deployment_server }}
           environment: acc
           ssh_key: ${{ secrets.deployment_private_ssh_key }}
