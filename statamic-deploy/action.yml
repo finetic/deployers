@@ -37,6 +37,18 @@ runs:
   using: "composite"
 
   steps:
+    - name: Validate deployment site
+      shell: bash
+      env:
+        DEPLOY_SITE: ${{ inputs.site_name }}
+      run: |
+        set -euo pipefail
+
+        if [[ -z "${DEPLOY_SITE//[[:space:]]/}" ]]; then
+          echo "::error::site_name is required; check the workflow site matrix"
+          exit 1
+        fi
+
     - name: 🔐 Setup SSH
       shell: bash
       env:

@@ -1,0 +1,274 @@
+---
+name: Deploy production
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  notify-started:
+    name: Notify deployment started - ${{ matrix.site }}
+    runs-on: ubuntu-latest
+    environment: production
+    strategy:
+      fail-fast: false
+      matrix:
+        # Gitea 1.26 needs a literal list; keep all four site matrices equal.
+        site:
+          - site-name
+    steps:
+      - name: Send Slack notification
+        continue-on-error: true
+        uses: finetic/deployers/slack-notify@main
+        with:
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          message: |
+            🚀 Deploy gestart
+            Project: ${{ vars.SITE_NAME }}
+            Site: ${{ matrix.site }}
+            Environment: prod
+            User: ${{ github.actor }}
+
+  backend:
+    name: Test backend
+    needs: notify-started
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run backend checks
+        uses: finetic/deployers/statamic-backend-test@main
+        with:
+          php-version: '8.5'
+          composer-auth: ${{ secrets.COMPOSER_AUTH }}
+
+  frontend:
+    name: Test frontend
+    needs: notify-started
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run frontend checks
+        uses: finetic/deployers/statamic-frontend-test@main
+        with:
+          node-version: '24'
+          working-directory: '.'
+
+  validate:
+    name: Validate deployment configuration
+    needs:
+      - backend
+      - frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required secrets
+        shell: bash
+        env:
+          COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
+          DOCKER_USERNAME: ${{ secrets.NEXUS_DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.NEXUS_DOCKER_PASSWORD }}
+          SSH_KEY: ${{ secrets.DEPLOYMENT_PRIVATE_SSH_KEY }}
+          DEPLOYMENT_SERVER: 'statamic-prod.finetic.dev'
+        run: |
+          set -euo pipefail
+
+          for name in COMPOSER_AUTH DOCKER_USERNAME DOCKER_PASSWORD SSH_KEY DEPLOYMENT_SERVER; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::${name} is required for a production deployment"
+              exit 1
+            fi
+          done
+
+  build:
+    name: Build and push production image
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build and push
+        uses: finetic/deployers/statamic-build-push-docker@main
+        with:
+          site_name: ${{ vars.SITE_NAME }}
+          registry: 'docker.finetic.dev'
+          docker_username: ${{ secrets.NEXUS_DOCKER_USERNAME }}
+          docker_password: ${{ secrets.NEXUS_DOCKER_PASSWORD }}
+          composer_auth: ${{ secrets.COMPOSER_AUTH }}
+          image_tag: production
+
+  deploy:
+    name: Deploy production - ${{ matrix.site }}
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Gitea 1.26 needs a literal list; keep all four site matrices equal.
+        site:
+          - site-name
+    steps:
+      - name: Deploy
+        uses: finetic/deployers/statamic-deploy@main
+        with:
+          client_name: ${{ vars.CLIENT_NAME }}
+          site_name: ${{ matrix.site }}
+          server: 'statamic-prod.finetic.dev'
+          environment: prod
+          ssh_key: ${{ secrets.DEPLOYMENT_PRIVATE_SSH_KEY }}
+
+  release:
+    name: Version and release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Tag and publish release
+        uses: finetic/deployers/statamic-release@main
+        with:
+          token: ${{ secrets.GIT_PRIVATE_SSH_KEY || github.token }}
+          git_username: ${{ vars.GIT_USERNAME }}
+          git_email: ${{ vars.GIT_EMAIL }}
+
+  dependencytrack-backend:
+    name: Dependency-Track backend
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate and upload backend SBOM
+        uses: finetic/deployers/dependencytrack/composer@main
+        with:
+          project_uuid: ${{ vars.DEPENDENCY_TRACK_PROJECT_UUID_BACKEND }}
+          server_hostname: ${{ vars.DEPENDENCY_TRACK_HOSTNAME }}
+          api_key: ${{ secrets.DEPENDENCY_TRACK_API_KEY }}
+
+  dependencytrack-frontend:
+    name: Dependency-Track frontend
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate and upload frontend SBOM
+        uses: finetic/deployers/dependencytrack/npm@main
+        with:
+          project_uuid: ${{ vars.DEPENDENCY_TRACK_PROJECT_UUID_FRONTEND }}
+          server_hostname: ${{ vars.DEPENDENCY_TRACK_HOSTNAME }}
+          api_key: ${{ secrets.DEPENDENCY_TRACK_API_KEY }}
+
+  notify-completed:
+    name: Notify deployment completed - ${{ matrix.site }}
+    needs: [deploy, release, dependencytrack-backend, dependencytrack-frontend]
+    runs-on: ubuntu-latest
+    environment: production
+    strategy:
+      fail-fast: false
+      matrix:
+        # Gitea 1.26 needs a literal list; keep all four site matrices equal.
+        site:
+          - site-name
+    steps:
+      - name: Send Slack notification
+        continue-on-error: true
+        uses: finetic/deployers/slack-notify@main
+        with:
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          message: |
+            ✅ Deploy geslaagd
+            Project: ${{ vars.SITE_NAME }}
+            Site: ${{ matrix.site }}
+            Environment: prod
+            Server: statamic-prod.finetic.dev
+
+  notify-failed:
+    name: Notify deployment failed - ${{ matrix.site }}
+    needs:
+      - backend
+      - frontend
+      - validate
+      - build
+      - deploy
+      - release
+      - dependencytrack-backend
+      - dependencytrack-frontend
+    if: >-
+      always() &&
+      (
+        needs.backend.result == 'failure' ||
+        needs.backend.result == 'cancelled' ||
+        needs.frontend.result == 'failure' ||
+        needs.frontend.result == 'cancelled' ||
+        needs.validate.result == 'failure' ||
+        needs.validate.result == 'cancelled' ||
+        needs.build.result == 'failure' ||
+        needs.build.result == 'cancelled' ||
+        needs.deploy.result == 'failure' ||
+        needs.deploy.result == 'cancelled' ||
+        needs.release.result == 'failure' ||
+        needs.release.result == 'cancelled' ||
+        needs.dependencytrack-backend.result == 'failure' ||
+        needs.dependencytrack-backend.result == 'cancelled' ||
+        needs.dependencytrack-frontend.result == 'failure' ||
+        needs.dependencytrack-frontend.result == 'cancelled'
+      )
+    runs-on: ubuntu-latest
+    environment: production
+    strategy:
+      fail-fast: false
+      matrix:
+        # Gitea 1.26 needs a literal list; keep all four site matrices equal.
+        site:
+          - site-name
+    steps:
+      - name: Determine failed steps
+        id: failure
+        shell: bash
+        env:
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          DT_BACKEND_RESULT: ${{ needs.dependencytrack-backend.result }}
+          DT_FRONTEND_RESULT: ${{ needs.dependencytrack-frontend.result }}
+          RELEASE_RESULT: ${{ needs.release.result }}
+        run: |
+          set -euo pipefail
+
+          failed_steps=()
+          [[ "$BACKEND_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("backend checks ($BACKEND_RESULT)")
+          [[ "$FRONTEND_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("frontend checks ($FRONTEND_RESULT)")
+          [[ "$VALIDATE_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("deployment configuration validation ($VALIDATE_RESULT)")
+          [[ "$BUILD_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("image build and push ($BUILD_RESULT)")
+          [[ "$DEPLOY_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("production deployment ($DEPLOY_RESULT; gezamenlijk resultaat van alle sites)")
+          [[ "$RELEASE_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("release ($RELEASE_RESULT)")
+
+          [[ "$DT_BACKEND_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("Dependency-Track backend ($DT_BACKEND_RESULT)")
+          [[ "$DT_FRONTEND_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("Dependency-Track frontend ($DT_FRONTEND_RESULT)")
+
+          failed_steps_list=$(printf "%s, " "${failed_steps[@]}")
+          failed_steps_list=${failed_steps_list%, }
+          echo "failed_steps=$failed_steps_list" >> "$GITHUB_OUTPUT"
+
+      - name: Send Slack notification
+        continue-on-error: true
+        uses: finetic/deployers/slack-notify@main
+        with:
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          message: |
+            ❌ Deployflow bevat fouten
+            Project: ${{ vars.SITE_NAME }}
+            Site: ${{ matrix.site }}
+            Environment: prod
+            Mislukte stap: ${{ steps.failure.outputs.failed_steps }}
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

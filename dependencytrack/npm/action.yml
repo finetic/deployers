@@ -1,0 +1,65 @@
+---
+name: Dependency-Track npm
+description: Generate and upload a npm SBOM with explicit credentials
+inputs:
+  package_location:
+    description: Directory containing the dependency manifest
+    required: false
+    default: '.'
+  project_uuid:
+    description: Existing Dependency-Track project UUID
+    required: true
+  server_hostname:
+    description: Dependency-Track hostname without the protocol
+    required: true
+  api_key:
+    description: Dependency-Track API key
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Setup npm
+      uses: actions/setup-node@v7
+      with:
+        node-version: '24'
+
+    - name: Install SBOM plugin
+      working-directory: ${{ inputs.package_location }}
+      shell: bash
+      run: |-
+        set -euo pipefail
+        npm install --global @cyclonedx/cyclonedx-npm
+
+    - name: Install npm packages
+      working-directory: ${{ inputs.package_location }}
+      shell: bash
+      run: |-
+        set -euo pipefail
+        npm ci
+
+    - name: Create SBOM step
+      # see for usage: https://www.npmjs.com/package/@cyclonedx/cyclonedx-npm
+      working-directory: ${{ inputs.package_location }}
+      shell: bash
+      run: |-
+        set -euo pipefail
+        cyclonedx-npm --output-format XML --output-file sbom.xml --validate --ignore-npm-errors
+
+    - name: Check SBOM file
+      working-directory: ${{ inputs.package_location }}
+      shell: bash
+      run: |-
+        set -euo pipefail
+        test -s sbom.xml
+
+    - name: upload
+      uses: DependencyTrack/gh-upload-sbom@v4
+      with:
+        server-hostname: ${{ inputs.server_hostname }}
+        api-key: ${{ inputs.api_key }}
+        project: ${{ inputs.project_uuid }}
+        bom-filename: ${{ inputs.package_location }}/sbom.xml
+        auto-create: false

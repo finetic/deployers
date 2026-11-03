@@ -7,10 +7,16 @@ on:
     paths:
       - '.github/workflows/**.yml'
       - '.github/workflows/**.yaml'
+      - 'templates/statamic/**'
+      - 'dependencytrack/**'
+      - 'statamic-release/**'
   pull_request:
     paths:
       - '.github/workflows/**.yml'
       - '.github/workflows/**.yaml'
+      - 'templates/statamic/**'
+      - 'dependencytrack/**'
+      - 'statamic-release/**'
 
 jobs:
   validate:
