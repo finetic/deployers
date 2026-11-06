@@ -4,7 +4,7 @@ description: "Build and push Docker image with registry cache"
 
 inputs:
   site_name:
-    description: "Site name"
+    description: "Site name for the default single-image build (Bake defines its own image names)"
     required: true
   registry:
     description: "Docker registry"
@@ -22,6 +22,11 @@ inputs:
   image_tag:
     description: "Immutable tag to publish (normally the commit SHA)"
     required: true
+
+  bake_file:
+    description: "Optional local Buildx Bake file for a multi-image build; empty keeps the single-image path"
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -45,6 +50,7 @@ runs:
         password: ${{ inputs.docker_password }}
 
     - name: 🏗 Build and push image
+      if: inputs.bake_file == ''
       uses: docker/build-push-action@v7
       env:
         COMPOSER_AUTH: ${{ inputs.composer_auth }}
@@ -70,3 +76,17 @@ runs:
 
         cache-from: type=registry,ref=${{ env.CACHE_IMAGE }}
         cache-to: type=registry,ref=${{ env.CACHE_IMAGE }},mode=max,compression=zstd,oci-mediatypes=true
+
+    - name: 🏗 Build and push Bake images
+      if: inputs.bake_file != ''
+      shell: bash
+      env:
+        BAKE_FILE: ${{ inputs.bake_file }}
+        REGISTRY: ${{ inputs.registry }}
+        IMAGE_TAG: ${{ inputs.image_tag }}
+        GIT_REVISION: ${{ github.sha }}
+        COMPOSER_AUTH: ${{ inputs.composer_auth }}
+      run: |
+        set -euo pipefail
+
+        docker buildx bake --file "$BAKE_FILE" --push --pull --provenance=false
