@@ -24,7 +24,7 @@ jobs:
       - name: Setup npm
         uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version: '26'
 
       - name: Install SBOM plugin
         working-directory: ${{ inputs.package_location }}

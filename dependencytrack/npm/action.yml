@@ -24,14 +24,15 @@ runs:
     - name: Setup npm
       uses: actions/setup-node@v7
       with:
-        node-version: '24'
+        node-version: '26'
 
     - name: Install SBOM plugin
       working-directory: ${{ inputs.package_location }}
       shell: bash
       run: |-
         set -euo pipefail
-        npm install --global @cyclonedx/cyclonedx-npm
+        # CycloneDX 7 requires the JSON validators to be installed explicitly.
+        npm install --global @cyclonedx/cyclonedx-npm@7.0.0 ajv@8 ajv-formats@3 ajv-formats-draft2019@1
 
     - name: Install npm packages
       working-directory: ${{ inputs.package_location }}
@@ -46,14 +47,14 @@ runs:
       shell: bash
       run: |-
         set -euo pipefail
-        cyclonedx-npm --output-format XML --output-file sbom.xml --validate --ignore-npm-errors
+        cyclonedx-npm --output-format JSON --output-file sbom.json --validate --ignore-npm-errors
 
     - name: Check SBOM file
       working-directory: ${{ inputs.package_location }}
       shell: bash
       run: |-
         set -euo pipefail
-        test -s sbom.xml
+        test -s sbom.json
 
     - name: upload
       uses: DependencyTrack/gh-upload-sbom@v4
@@ -61,5 +62,5 @@ runs:
         server-hostname: ${{ inputs.server_hostname }}
         api-key: ${{ inputs.api_key }}
         project: ${{ inputs.project_uuid }}
-        bom-filename: ${{ inputs.package_location }}/sbom.xml
+        bom-filename: ${{ inputs.package_location }}/sbom.json
         auto-create: false
