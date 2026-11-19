@@ -21,6 +21,20 @@ runs:
       with:
         fetch-depth: 1
 
+    - name: Use reachable Ubuntu package mirror on Gitea
+      if: ${{ github.server_url == 'https://git.statamic.finetic.dev' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        sources=/etc/apt/sources.list.d/ubuntu.sources
+        if [[ -f "$sources" ]]; then
+          elevate=()
+          if (( EUID != 0 )); then
+            elevate=(sudo)
+          fi
+          "${elevate[@]}" sed -i -E 's@https?://(archive|security)\.ubuntu\.com/ubuntu@https://mirrors.edge.kernel.org/ubuntu@g' "$sources"
+        fi
+
     - name: 🧪 Setup PHP
       uses: shivammathur/setup-php@v2
       with:
