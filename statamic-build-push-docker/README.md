@@ -1,5 +1,12 @@
 # Statamic Build & Push
 
+After checkout, the build generates `public/.well-known/security.txt` from the
+GitHub Actions variables `SECURITY_TXT_EMAIL` and `SECURITY_TXT_PHONE`. Set at
+least one variable and give the project access if using organization variables.
+The file expires one calendar year after the build in UTC. Both build modes
+include it through the local project context. Workflows with their own build step
+can use `finetic/deployers/statamic-security-txt@main` after checkout.
+
 Without `bake_file`, this action retains its existing single-image build, tags and
 registry-cache behavior. `site_name` selects that image and cache name.
 
