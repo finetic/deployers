@@ -19,7 +19,7 @@ runs:
 
         git fetch origin "$BASE_REF" --depth=1 || true
 
-        git diff --name-only origin/$BASE_REF...HEAD -- '*.pp' \
+        git diff --name-only --diff-filter=d origin/$BASE_REF...HEAD -- '*.pp' \
         | grep -v '/plans/' > changed-lint.txt || true
 
         COUNT=$(wc -l < changed-lint.txt | tr -d ' ')
