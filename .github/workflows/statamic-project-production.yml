@@ -17,10 +17,30 @@ on:
         required: false
         default: ""
         type: string
+      bake_file:
+        description: Optional Docker Bake file for multi-site builds
+        required: false
+        default: ""
+        type: string
       registry:
         description: Docker registry
         required: false
         default: docker.finetic.dev
+        type: string
+      redirect_log_errors:
+        description: Override redirect error logging during backend analysis
+        required: false
+        default: ""
+        type: string
+      application_test:
+        description: Optional application test suite (composer or phpunit)
+        required: false
+        default: ""
+        type: string
+      frontend_matrix:
+        description: JSON array of site and theme objects for frontend checks
+        required: false
+        default: '[{"site":"","theme":""}]'
         type: string
       php_version:
         description: PHP version used by the backend checks
@@ -52,7 +72,23 @@ on:
         required: false
         default: statamic-prod.finetic.dev
         type: string
+      use_statamic_release:
+        description: Use the Statamic-specific release action
+        required: false
+        default: false
+        type: boolean
+      upload_dependencytrack:
+        description: Upload backend and frontend SBOMs during the production workflow
+        required: false
+        default: false
+        type: boolean
     secrets:
+      release_token:
+        description: Optional token for creating Statamic releases
+        required: false
+      dependencytrack_api_key:
+        description: Dependency-Track API key
+        required: false
       composer_auth:
         description: Composer auth.json content
         required: true
@@ -74,7 +110,11 @@ permissions:
 
 jobs:
   notify-started:
-    name: Notify deployment started
+    name: Notify deployment started - ${{ matrix.site }}
+    strategy:
+      fail-fast: false
+      matrix:
+        site: ${{ fromJSON(inputs.deploy_sites || format('["{0}"]', inputs.site_name)) }}
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -86,6 +126,7 @@ jobs:
           message: |
             🚀 Deploy gestart
             Project: ${{ inputs.site_name }}
+            Site: ${{ matrix.site }}
             Environment: prod
             User: ${{ github.actor }}
 
@@ -98,11 +139,30 @@ jobs:
       - name: Run backend checks
         uses: finetic/deployers/statamic-backend-test@main
         with:
+          redirect-log-errors: ${{ inputs.redirect_log_errors }}
           php-version: ${{ inputs.php_version }}
           composer-auth: ${{ secrets.composer_auth }}
+      - name: Run application tests
+        if: inputs.application_test != ''
+        shell: bash
+        env:
+          APPLICATION_TEST: ${{ inputs.application_test }}
+        run: |
+          set -euo pipefail
+          case "$APPLICATION_TEST" in
+            composer) composer test ;;
+            phpunit) vendor/bin/phpunit ;;
+            *) echo "Unsupported application test suite: $APPLICATION_TEST" >&2; exit 1 ;;
+          esac
 
   frontend:
-    name: Test frontend
+    name: ${{ matrix.site != '' && format('Test frontend - {0}', matrix.site) || 'Test frontend' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.frontend_matrix) }}
+    env:
+      THEME: ${{ matrix.theme }}
     needs: notify-started
     if: inputs.run_frontend_checks
     runs-on: ubuntu-latest
@@ -115,15 +175,7 @@ jobs:
 
   validate:
     name: Validate deployment configuration
-    needs:
-      - backend
-      - frontend
-    if: >-
-      always() &&
-      needs.backend.result != 'failure' &&
-      needs.backend.result != 'cancelled' &&
-      needs.frontend.result != 'failure' &&
-      needs.frontend.result != 'cancelled'
+    needs: notify-started
     runs-on: ubuntu-latest
     steps:
       - name: Check required secrets
@@ -146,13 +198,19 @@ jobs:
 
   build:
     name: Build and push production image
-    needs: validate
+    needs: [backend, frontend, validate]
+    if: >-
+      !cancelled() &&
+      (needs.backend.result == 'success' || needs.backend.result == 'skipped') &&
+      (needs.frontend.result == 'success' || needs.frontend.result == 'skipped') &&
+      needs.validate.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Build and push
         uses: finetic/deployers/statamic-build-push-docker@main
         with:
           site_name: ${{ inputs.site_name }}
+          bake_file: ${{ inputs.bake_file }}
           registry: ${{ inputs.registry }}
           docker_username: ${{ secrets.nexus_docker_username }}
           docker_password: ${{ secrets.nexus_docker_password }}
@@ -180,13 +238,75 @@ jobs:
   release:
     name: Version and release
     needs: build
+    if: '!inputs.use_statamic_release'
     uses: https://github.com/finetic/deployers/.github/workflows/versioning.yml@main
     permissions:
       contents: write
 
+  statamic-release:
+    name: Version and release
+    needs: build
+    if: inputs.use_statamic_release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Tag and publish release
+        uses: finetic/deployers/statamic-release@main
+        with:
+          token: ${{ secrets.release_token || github.token }}
+          git_username: ${{ vars.GIT_USERNAME }}
+          git_email: ${{ vars.GIT_EMAIL }}
+
+  dependencytrack-backend:
+    name: Dependency-Track backend
+    needs: [backend, frontend, validate]
+    if: >-
+      !cancelled() &&
+      (needs.backend.result == 'success' || needs.backend.result == 'skipped') &&
+      (needs.frontend.result == 'success' || needs.frontend.result == 'skipped') &&
+      needs.validate.result == 'success' &&
+      inputs.upload_dependencytrack
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate and upload backend SBOM
+        uses: finetic/deployers/dependencytrack/composer@main
+        with:
+          project_uuid: ${{ vars.DEPENDENCY_TRACK_PROJECT_UUID_BACKEND }}
+          server_hostname: ${{ vars.DEPENDENCY_TRACK_HOSTNAME }}
+          api_key: ${{ secrets.dependencytrack_api_key }}
+
+  dependencytrack-frontend:
+    name: Dependency-Track frontend
+    needs: [backend, frontend, validate]
+    if: >-
+      !cancelled() &&
+      (needs.backend.result == 'success' || needs.backend.result == 'skipped') &&
+      (needs.frontend.result == 'success' || needs.frontend.result == 'skipped') &&
+      needs.validate.result == 'success' &&
+      inputs.upload_dependencytrack
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate and upload frontend SBOM
+        uses: finetic/deployers/dependencytrack/npm@main
+        with:
+          project_uuid: ${{ vars.DEPENDENCY_TRACK_PROJECT_UUID_FRONTEND }}
+          server_hostname: ${{ vars.DEPENDENCY_TRACK_HOSTNAME }}
+          api_key: ${{ secrets.dependencytrack_api_key }}
+
   notify-completed:
-    name: Notify deployment completed
-    needs: deploy
+    name: Notify deployment completed - ${{ matrix.site }}
+    strategy:
+      fail-fast: false
+      matrix:
+        site: ${{ fromJSON(inputs.deploy_sites || format('["{0}"]', inputs.site_name)) }}
+    needs: [deploy, release, statamic-release, dependencytrack-backend, dependencytrack-frontend]
+    if: >-
+      always() &&
+      needs.deploy.result == 'success' &&
+      (needs.release.result == 'success' || needs.statamic-release.result == 'success') &&
+      (needs.dependencytrack-backend.result == 'success' || needs.dependencytrack-backend.result == 'skipped') &&
+      (needs.dependencytrack-frontend.result == 'success' || needs.dependencytrack-frontend.result == 'skipped')
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -198,11 +318,16 @@ jobs:
           message: |
             ✅ Deploy geslaagd
             Project: ${{ inputs.site_name }}
+            Site: ${{ matrix.site }}
             Environment: prod
             Server: ${{ inputs.deployment_server }}
 
   notify-failed:
-    name: Notify deployment failed
+    name: Notify deployment failed - ${{ matrix.site }}
+    strategy:
+      fail-fast: false
+      matrix:
+        site: ${{ fromJSON(inputs.deploy_sites || format('["{0}"]', inputs.site_name)) }}
     needs:
       - backend
       - frontend
@@ -210,6 +335,9 @@ jobs:
       - build
       - deploy
       - release
+      - statamic-release
+      - dependencytrack-backend
+      - dependencytrack-frontend
     if: >-
       always() &&
       (
@@ -224,7 +352,10 @@ jobs:
         needs.deploy.result == 'failure' ||
         needs.deploy.result == 'cancelled' ||
         needs.release.result == 'failure' ||
-        needs.release.result == 'cancelled'
+        needs.release.result == 'cancelled' ||
+        contains(fromJSON('["failure","cancelled"]'), needs.statamic-release.result) ||
+        contains(fromJSON('["failure","cancelled"]'), needs.dependencytrack-backend.result) ||
+        contains(fromJSON('["failure","cancelled"]'), needs.dependencytrack-frontend.result)
       )
     runs-on: ubuntu-latest
     environment: production
@@ -238,7 +369,9 @@ jobs:
           VALIDATE_RESULT: ${{ needs.validate.result }}
           BUILD_RESULT: ${{ needs.build.result }}
           DEPLOY_RESULT: ${{ needs.deploy.result }}
-          RELEASE_RESULT: ${{ needs.release.result }}
+          RELEASE_RESULT: ${{ inputs.use_statamic_release && needs.statamic-release.result || needs.release.result }}
+          DEPENDENCYTRACK_BACKEND_RESULT: ${{ needs.dependencytrack-backend.result }}
+          DEPENDENCYTRACK_FRONTEND_RESULT: ${{ needs.dependencytrack-frontend.result }}
         run: |
           set -euo pipefail
 
@@ -255,6 +388,10 @@ jobs:
             failed_steps+=("production deployment ($DEPLOY_RESULT)")
           [[ "$RELEASE_RESULT" =~ ^(failure|cancelled)$ ]] &&
             failed_steps+=("release ($RELEASE_RESULT)")
+          [[ "$DEPENDENCYTRACK_BACKEND_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("Dependency-Track backend ($DEPENDENCYTRACK_BACKEND_RESULT)")
+          [[ "$DEPENDENCYTRACK_FRONTEND_RESULT" =~ ^(failure|cancelled)$ ]] &&
+            failed_steps+=("Dependency-Track frontend ($DEPENDENCYTRACK_FRONTEND_RESULT)")
 
           failed_steps_list=$(printf "%s, " "${failed_steps[@]}")
           failed_steps_list=${failed_steps_list%, }
@@ -268,6 +405,7 @@ jobs:
           message: |
             ❌ Deploy mislukt
             Project: ${{ inputs.site_name }}
+            Site: ${{ matrix.site }}
             Environment: prod
             Mislukte stap: ${{ steps.failure.outputs.failed_steps }}
             Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

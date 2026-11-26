@@ -12,6 +12,21 @@ on:
         description: Site name used in notifications
         required: true
         type: string
+      redirect_log_errors:
+        description: Override redirect error logging during backend analysis
+        required: false
+        default: ""
+        type: string
+      application_test:
+        description: Optional application test suite (composer or phpunit)
+        required: false
+        default: ""
+        type: string
+      frontend_matrix:
+        description: JSON array of site and theme objects for frontend checks
+        required: false
+        default: '[{"site":"","theme":""}]'
+        type: string
       php_version:
         description: PHP version used by the backend checks
         required: false
@@ -62,11 +77,30 @@ jobs:
       - name: Run backend checks
         uses: finetic/deployers/statamic-backend-test@main
         with:
+          redirect-log-errors: ${{ inputs.redirect_log_errors }}
           php-version: ${{ inputs.php_version }}
           composer-auth: ${{ secrets.composer_auth }}
+      - name: Run application tests
+        if: inputs.application_test != ''
+        shell: bash
+        env:
+          APPLICATION_TEST: ${{ inputs.application_test }}
+        run: |
+          set -euo pipefail
+          case "$APPLICATION_TEST" in
+            composer) composer test ;;
+            phpunit) vendor/bin/phpunit ;;
+            *) echo "Unsupported application test suite: $APPLICATION_TEST" >&2; exit 1 ;;
+          esac
 
   frontend:
-    name: Test frontend
+    name: ${{ matrix.site != '' && format('Test frontend - {0}', matrix.site) || 'Test frontend' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.frontend_matrix) }}
+    env:
+      THEME: ${{ matrix.theme }}
     if: inputs.run_frontend_checks
     runs-on: ubuntu-latest
     steps:

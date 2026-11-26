@@ -49,6 +49,10 @@ runs:
         username: ${{ inputs.docker_username }}
         password: ${{ inputs.docker_password }}
 
+    - name: Resolve Statamic build settings
+      id: statamic-build
+      uses: finetic/deployers/statamic-build-settings@main
+
     - name: 🏗 Build and push image
       if: inputs.bake_file == ''
       uses: docker/build-push-action@v7
@@ -58,8 +62,8 @@ runs:
 
       with:
         context: ${{ github.workspace }}
-        file: ${{ github.workspace }}/docker/prod/Dockerfile
-        target: prod
+        file: ${{ steps.statamic-build.outputs.dockerfile }}
+        target: ${{ steps.statamic-build.outputs.target }}
 
         push: true
         platforms: linux/amd64
@@ -71,7 +75,9 @@ runs:
           ${{ inputs.registry }}/finetic/websites/statamic-${{ inputs.site_name }}:${{ github.sha }}
         labels: vendor=Finetic
 
-        build-args: GIT_REVISION=${{ github.sha }}
+        build-args: |
+          GIT_REVISION=${{ github.sha }}
+          ${{ steps.statamic-build.outputs.build_args }}
         secrets: composer_auth=${{ inputs.composer_auth }}
 
         cache-from: type=registry,ref=${{ env.CACHE_IMAGE }}
@@ -82,6 +88,9 @@ runs:
       shell: bash
       env:
         BAKE_FILE: ${{ inputs.bake_file }}
+        STATAMIC_DOCKERFILE: ${{ steps.statamic-build.outputs.dockerfile }}
+        STATAMIC_BUILD_TARGET: ${{ steps.statamic-build.outputs.target }}
+        STATAMIC_BUILD_ARGS: ${{ steps.statamic-build.outputs.build_args }}
         REGISTRY: ${{ inputs.registry }}
         IMAGE_TAG: ${{ inputs.image_tag }}
         GIT_REVISION: ${{ github.sha }}
@@ -89,4 +98,8 @@ runs:
       run: |
         set -euo pipefail
 
-        docker buildx bake --file "$BAKE_FILE" --push --pull --provenance=false
+        overrides=()
+        while IFS= read -r arg; do
+          [[ -z "$arg" ]] || overrides+=(--set "*.args.$arg")
+        done <<< "$STATAMIC_BUILD_ARGS"
+        docker buildx bake --file "$BAKE_FILE" "${overrides[@]}" --push --pull --provenance=false

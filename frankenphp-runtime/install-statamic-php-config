@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+install -m 0644 /usr/local/share/statamic/php.ini "$PHP_INI_DIR/conf.d/php-statamic.ini"
+
+if [ -f "$1" ]; then
+    install -m 0644 "$1" "$PHP_INI_DIR/conf.d/zz-php-statamic-project.ini"
+fi
