@@ -1,0 +1,41 @@
+---
+name: Statamic security.txt
+description: Generate security.txt in the checked-out Statamic project
+
+runs:
+  using: composite
+  steps:
+    - name: Generate security.txt
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        SECURITY_TXT_PATH: ${{ vars.SECURITY_TXT_PATH }}
+        SECURITY_TXT_EMAIL: ${{ vars.SECURITY_TXT_EMAIL }}
+        SECURITY_TXT_PHONE: ${{ vars.SECURITY_TXT_PHONE }}
+      run: |
+        set -euo pipefail
+
+        case "/$SECURITY_TXT_PATH/" in
+          //|//*|*/../*|*/./*|*//)
+            echo '::error::Set SECURITY_TXT_PATH to a file path relative to the project workspace.'
+            exit 1
+            ;;
+        esac
+
+        contacts=()
+        if [[ -n "$SECURITY_TXT_EMAIL" ]]; then
+          contacts+=("Contact: mailto:$SECURITY_TXT_EMAIL")
+        fi
+        if [[ -n "$SECURITY_TXT_PHONE" ]]; then
+          contacts+=("Contact: tel:$SECURITY_TXT_PHONE")
+        fi
+        if [[ ${#contacts[@]} -eq 0 ]]; then
+          echo '::error::Set SECURITY_TXT_EMAIL or SECURITY_TXT_PHONE as a GitHub Actions variable.'
+          exit 1
+        fi
+
+        expires=$(date -u -d '+1 year' '+%Y-%m-%dT%H:%M:%SZ')
+        mkdir -p -- "$(dirname -- "$SECURITY_TXT_PATH")"
+        printf '%s\n' \
+          "${contacts[@]}" \
+          "Expires: $expires" > "$SECURITY_TXT_PATH"
