@@ -1,8 +1,14 @@
 # Statamic Build & Push
 
-After checkout, the build generates `public/.well-known/security.txt` from the
-GitHub Actions variables `SECURITY_TXT_EMAIL` and `SECURITY_TXT_PHONE`. Set at
-least one variable and give the project access if using organization variables.
+After checkout, the build generates `security.txt` using Actions variables.
+Set `SECURITY_TXT_PATH=public/.well-known/security.txt` as an organization
+variable on the platform that runs the workflow. A repository variable of the
+same name overrides the path for that project. The path is relative to the
+project workspace and must point to a file included in the image and served at
+`/.well-known/security.txt`.
+
+Set at least one of `SECURITY_TXT_EMAIL` and `SECURITY_TXT_PHONE` and give the
+project access if using organization variables.
 The file expires one calendar year after the build in UTC. Both build modes
 include it through the local project context. Workflows with their own build step
 can use `finetic/deployers/statamic-security-txt@main` after checkout.
