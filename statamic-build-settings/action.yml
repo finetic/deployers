@@ -1,0 +1,42 @@
+---
+name: Statamic build settings
+description: Resolve the Dockerfile and build settings for a Statamic project
+
+outputs:
+  dockerfile:
+    description: Dockerfile path
+    value: ${{ steps.settings.outputs.dockerfile }}
+  target:
+    description: Docker build target
+    value: ${{ steps.settings.outputs.target }}
+  build_args:
+    description: Newline-separated Docker build arguments
+    value: ${{ steps.settings.outputs.build_args }}
+
+runs:
+  using: composite
+  steps:
+    - id: settings
+      shell: bash
+      env:
+        CENTRAL_DOCKERFILE: ${{ github.action_path }}/Dockerfile
+      run: |
+        set -euo pipefail
+        settings=docker/statamic-build.json
+        if [[ ! -f "$settings" ]]; then
+          printf 'dockerfile=%s\ntarget=prod\n' "$GITHUB_WORKSPACE/docker/prod/Dockerfile" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        target=$(jq -er '.target // "prod" | select(. == "prod" or . == "prod-default-entrypoint" or . == "prod-themed" or . == "prod-waimo")' "$settings")
+        args=$(jq -er '
+          (.args // {}) | to_entries | map(
+            select((.key | test("^[A-Z][A-Z0-9_]*$")) and
+              (.value | type == "string" and test("^[A-Za-z0-9_./:@-]+$")))
+          ) as $valid | if ($valid | length) != length then error("Invalid Docker build arguments")
+          else $valid | map("\(.key)=\(.value)") | join("\n") end
+        ' "$settings")
+        {
+          printf 'dockerfile=%s\ntarget=%s\n' "$CENTRAL_DOCKERFILE" "$target"
+          printf 'build_args<<STATAMIC_ARGS\n%s\nSTATAMIC_ARGS\n' "$args"
+        } >> "$GITHUB_OUTPUT"

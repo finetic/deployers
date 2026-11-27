@@ -8,6 +8,11 @@ inputs:
     required: false
     default: "8.4"
 
+  redirect-log-errors:
+    description: Override redirect error logging during PHPStan
+    required: false
+    default: ""
+
   composer-auth:
     description: "Composer auth.json content"
     required: true
@@ -80,12 +85,17 @@ runs:
       shell: bash
 
     - name: Static Analysis
+      env:
+        REDIRECT_LOG_ERRORS_OVERRIDE: ${{ inputs['redirect-log-errors'] }}
       run: |
         set -euo pipefail
 
         echo "Running PHPCS..."
         vendor/bin/phpcs --parallel=$(nproc)
 
+        if [[ -n "$REDIRECT_LOG_ERRORS_OVERRIDE" ]]; then
+          export REDIRECT_LOG_ERRORS="$REDIRECT_LOG_ERRORS_OVERRIDE"
+        fi
         echo "Running PHPStan..."
         vendor/bin/phpstan --no-progress --memory-limit=1G
       shell: bash
